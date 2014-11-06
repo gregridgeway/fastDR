@@ -3,10 +3,11 @@ fastDR
 
 R package for fast and easy doubly robust estimation of treatments effects
 
-To install from GitHub, make sure you have installed devtools
-install.packages("devtools")
+To install from GitHub, make sure you have installed `devtools`
 
-Then install fastDR from GitHub:
+   install.packages("devtools")
 
-library(devtools)
-install_github("gregridgeway/fastDR")
+Then install `fastDR` from GitHub:
+
+   library(devtools)
+   install_github("gregridgeway/fastDR")
