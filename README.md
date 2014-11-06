@@ -10,4 +10,5 @@ To install from GitHub, make sure you have installed `devtools`
 Then install `fastDR` from GitHub:
 
    library(devtools)
+   
    install_github("gregridgeway/fastDR")
