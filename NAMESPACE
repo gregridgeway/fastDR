@@ -1,0 +1,4 @@
+export(fastDR, ks, make.fastDR.formula)
+import(gbm, survey)
+S3method(print,   fastDR)
+S3method(summary, fastDR)
