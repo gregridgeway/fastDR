@@ -126,8 +126,6 @@ fastDR <- function(form.list,
    if(is.null(x.form))
       stop("form.list is missing x.form")
    weights.form <- form.list$weights.form
-   if(is.null(weights.form))
-      weights.form <- ~1
    key.form     <- form.list$key.form
    if(is.null(key.form))
       stop("form.list is missing key.form")
@@ -312,6 +310,10 @@ fastDR <- function(form.list,
          data0$w[!i.treat] <- p[!i.treat,j]/(1-p[!i.treat,j])
          data0$w <- with(data0, samp.w*w) # weights should be sampling weight*PSW
 
+         # normalize the weights to have max 1.0 within treatment
+         data0$w[ i.treat] <- data0$w[ i.treat]/max(data0$w[ i.treat])
+         data0$w[!i.treat] <- data0$w[!i.treat]/max(data0$w[!i.treat])
+         
          bal <- NULL
          for(x in match.vars)
          {
@@ -350,7 +352,7 @@ fastDR <- function(form.list,
             results$balance.tab.un <- bal
          }
       }
-
+      
       # add key to the names of the weights so user can match weights to cases
       names(results$w) <- key
       names(results$p) <- key
