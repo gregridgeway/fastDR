@@ -387,6 +387,8 @@ fastDR <- function(form.list,
    results$glm.ps <- vector("list",length(outcome.y))
    results$glm.dr <- vector("list",length(outcome.y))
 
+   # make sure data0 has the best prop score weights
+   data0$w <- results$w
    sdesign.un <- svydesign(ids=~1,weights=~samp.w,data=data0)
    sdesign.w  <- svydesign(ids=~1,weights=~w,     data=data0)
    if(verbose)
