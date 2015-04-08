@@ -310,9 +310,9 @@ fastDR <- function(form.list,
          data0$w[!i.treat] <- p[!i.treat,j]/(1-p[!i.treat,j])
          data0$w <- with(data0, samp.w*w) # weights should be sampling weight*PSW
 
-         # normalize the weights to have max 1.0 within treatment
-         data0$w[ i.treat] <- data0$w[ i.treat]/max(data0$w[ i.treat])
-         data0$w[!i.treat] <- data0$w[!i.treat]/max(data0$w[!i.treat])
+         # normalize the weights to have mean 1.0 within treatment
+         data0$w[ i.treat] <- data0$w[ i.treat]/mean(data0$w[ i.treat])
+         data0$w[!i.treat] <- data0$w[!i.treat]/mean(data0$w[!i.treat])
          
          bal <- NULL
          for(x in match.vars)
@@ -372,7 +372,7 @@ fastDR <- function(form.list,
       shrinkage <- shrinkage*results$best.iter/(n.trees*0.75)
    }
 
-   results$n1  <- length(i.treat)
+   results$n1  <- sum(i.treat)
    w0 <- results$w[!i.treat]
    results$ESS <- sum(w0)^2/sum(w0^2)
    colnames(results$balance.tab.un) <- c("control","treatment","KS")
@@ -386,6 +386,7 @@ fastDR <- function(form.list,
    results$glm.un <- vector("list",length(outcome.y))
    results$glm.ps <- vector("list",length(outcome.y))
    results$glm.dr <- vector("list",length(outcome.y))
+   results$z      <- rep(NA,length(outcome.y))
 
    # make sure data0 has the best prop score weights
    data0$w <- results$w
@@ -421,6 +422,10 @@ fastDR <- function(form.list,
                                  family=y.dist[i.y]))
        glm1 <- eval(glm1)
        results$glm.dr[[i.y]] <- glm1
+       # transform from t to z for better FDR calculation
+       results$z[i.y] <- 
+          qnorm(pt(coef(summary(glm1))[2,"t value"],
+                   glm1$df.residual))
    }
    if(verbose) cat("\nOutcome regression models complete\n")
 ### END OUTCOME ANALYSIS ###
