@@ -220,18 +220,18 @@ fastDR <- function(form.list,
    if(any(data0$samp.w<0))
       stop("Some observation weights are negative")
 
-   # create missing indicators, and mean/mode impute
+   # create missing indicators, and median/mode impute
    for(xj in match.vars)
    {
       i <- which(is.na(data0[,xj]))
-      if(sum(i)>10)
+      if(length(i)>10)
       {  # create missing indicators if there are at least 10 NAs
          data0 <- cbind(data0, 0)
          data0[i,ncol(data0)] <- 1
          names(data0)[ncol(data0)] <- paste(xj,".NA",sep="")
          match.vars.NA.index <- c(match.vars.NA.index, ncol(data0))
       }
-      if(sum(i)>0)
+      if(length(i)>0)
       {
          if(is.factor(data0[,xj]))
          {  # impute the mode
@@ -383,6 +383,9 @@ fastDR <- function(form.list,
 
 ### BEGIN OUTCOME ANALYSIS ###
    outcome.y <- attr(terms(y.form),"term.labels")
+   if(length(y.dist)==1) y.dist <- rep(y.dist,length(outcome.y))
+   if(length(y.dist)!=length(outcome.y))
+      stop("Length of y.dist must be 1 or be the same as the number of outcomes")
    results$glm.un <- vector("list",length(outcome.y))
    results$glm.ps <- vector("list",length(outcome.y))
    results$glm.dr <- vector("list",length(outcome.y))
@@ -486,7 +489,7 @@ fastDR <- function(form.list,
       else
       {
          # delta method? Tends to be too small
-#         results$effects[[i.y]]$se.y0[3] <- sqrt(var(y.hat0)/length(y.hat0))
+         # results$effects[[i.y]]$se.y0[3] <- sqrt(var(y.hat0)/length(y.hat0))
          # Monte Carlo the off-diagonals
          se.temp1 <- sum(vcov(y.hat0)) # vcov will return a vector here
          i <- sample(1:nrow(a), size=1000)
