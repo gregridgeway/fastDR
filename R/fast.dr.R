@@ -154,10 +154,19 @@ fastDR <- function(form.list,
 
    if(any(!is.character(y.dist)))
       stop("Outcome distribution, y.dist, should be given as a character string (ex. \"gaussian\", with the quotes)")
+   if(length(y.dist)==1) y.dist <- rep(y.dist,n.outcomes)
+   if(length(y.dist)!=n.outcomes)
+      stop("Length of y.dist must be 1 or be the same as the number of outcomes")
    if(any(y.dist=="binomial"))
-      warning("Suggest using 'quasibinomial' instead of 'binomial'")
+   {
+      y.dist[y.dist=="binomial"] <- "quasibinomial"
+      warning("Using 'quasibinomial' instead of 'binomial'")
+   }
    if(any(y.dist=="poisson"))
-      warning("Suggest using 'quasipoisson' instead of 'poisson'")
+   {
+      y.dist[y.dist=="poisson"] <- "quasipoisson"
+      warning("Using 'quasipoisson' instead of 'poisson'")
+   }
 
    # need to use a variable called w and samp.w
    if("w" %in% names(data))
@@ -202,7 +211,11 @@ fastDR <- function(form.list,
       stop("The treatment indicator specified in t.form does not only take values 0 or 1. The treatment indicator must be a 0 or a 1")
    i.treat <- i.treat==1
 
-   match.vars <- names(data0)[-(1:2)]
+   # extract the names of outcome variables
+   outcome.y  <- attr(terms(y.form),"term.labels")
+   n.outcomes <- length(outcome.y)
+   # extract the variables names in X
+   match.vars <- names(data0)[-(1:(n.outcomes+1))]
    match.vars.NA.index <- NULL
 
    # extract observation weights
@@ -226,10 +239,16 @@ fastDR <- function(form.list,
       i <- which(is.na(data0[,xj]))
       if(length(i)>10)
       {  # create missing indicators if there are at least 10 NAs
-         data0 <- cbind(data0, 0)
-         data0[i,ncol(data0)] <- 1
-         names(data0)[ncol(data0)] <- paste(xj,".NA",sep="")
-         match.vars.NA.index <- c(match.vars.NA.index, ncol(data0))
+         #   check not completely correlated with other missing indicators
+         a <- rep(0, nrow(data0))
+         a[i] <- 1
+         corNA <- cor(a,data0[,match.vars.NA.index])
+         if(all(corNA!=1))
+         {
+            data0 <- cbind(data0, a)
+            names(data0)[ncol(data0)] <- paste(xj,".NA",sep="")
+            match.vars.NA.index <- c(match.vars.NA.index, ncol(data0))
+         }
       }
       if(length(i)>0)
       {
@@ -382,10 +401,6 @@ fastDR <- function(form.list,
 ### END PROPENSITY SCORE ESTIMATION ###
 
 ### BEGIN OUTCOME ANALYSIS ###
-   outcome.y <- attr(terms(y.form),"term.labels")
-   if(length(y.dist)==1) y.dist <- rep(y.dist,length(outcome.y))
-   if(length(y.dist)!=length(outcome.y))
-      stop("Length of y.dist must be 1 or be the same as the number of outcomes")
    results$glm.un <- vector("list",length(outcome.y))
    results$glm.ps <- vector("list",length(outcome.y))
    results$glm.dr <- vector("list",length(outcome.y))
