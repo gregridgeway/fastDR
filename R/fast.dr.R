@@ -134,6 +134,10 @@ fastDR <- function(form.list,
    if("." %in% all.vars(y.form))
       stop("'.' not allowed in y.form")
 
+   # extract the names of outcome variables
+   outcome.y  <- attr(terms(y.form),"term.labels")
+   n.outcomes <- length(outcome.y)
+
    if("." %in% all.vars(x.form))
       warning("You have used a '.' in x.form. This likely included variables that you did not want to be included. If you must use '.' be sure to use '-' to remove the unwanted terms (e.g. ~.-weights-ID-treat-Y)")
 
@@ -211,9 +215,6 @@ fastDR <- function(form.list,
       stop("The treatment indicator specified in t.form does not only take values 0 or 1. The treatment indicator must be a 0 or a 1")
    i.treat <- i.treat==1
 
-   # extract the names of outcome variables
-   outcome.y  <- attr(terms(y.form),"term.labels")
-   n.outcomes <- length(outcome.y)
    # extract the variables names in X
    match.vars <- names(data0)[-(1:(n.outcomes+1))]
    match.vars.NA.index <- NULL
@@ -377,7 +378,10 @@ fastDR <- function(form.list,
       names(results$p) <- key
       results$shrinkage <- shrinkage
       if(verbose)
+      {
          cat("Best number of iterations:",results$best.iter,"\n")
+         cat("Max KS:",results$ks,"\n")
+      }
       converged <-
          with(results, (ks<0.005) ||
                        (best.iter>n.trees*0.5 && best.iter<n.trees*0.9))
@@ -439,6 +443,14 @@ fastDR <- function(form.list,
        glm1 <- substitute(svyglm(formula=dr.form,design=sdesign.w,
                                  family=y.dist[i.y]))
        glm1 <- eval(glm1)
+       # remove any coefficients that are NA
+       if(any(is.na(glm1$coefficients)))
+       {
+          a <- paste0(".~.-",
+               paste0(names(glm1$coefficients)[is.na(glm1$coefficients)],
+                      collapse="-"))
+          glm1 <- update(glm1, formula.=formula(a))
+       }
        results$glm.dr[[i.y]] <- glm1
        # transform from t to z for better FDR calculation
        results$z[i.y] <- 
@@ -500,8 +512,7 @@ fastDR <- function(form.list,
       if(sum(i.treat)<1000) # use exact Cov for SE calculation
       {
          results$effects[[i.y]]$se.y0[3] <- sqrt(mean(vcov(y.hat0)))
-      }
-      else
+      } else
       {
          # delta method? Tends to be too small
          # results$effects[[i.y]]$se.y0[3] <- sqrt(var(y.hat0)/length(y.hat0))
