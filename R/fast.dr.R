@@ -208,7 +208,7 @@ fastDR <- function(form.list,
    data0 <- cbind(model.frame(y.form, data, na.action=na.pass),
                   model.frame(t.form, data, na.action=na.pass),
                   model.frame(x.form, data, na.action=na.pass))
-
+   
    # get treatment indicator and check that they are all 0/1
    i.treat <- model.frame(t.form,data, na.action=na.pass)[,1]
    if(!all(i.treat %in% 0:1))
@@ -356,6 +356,10 @@ fastDR <- function(form.list,
          }
 
          this.bal <- max(abs(bal[,3]))
+         if(is.na(this.bal))
+         {
+            this.bal <- Inf
+         }
          if((best.bal>0.002) &&    # don't refine further if best KS<0.002
             (this.bal < best.bal))
          {
