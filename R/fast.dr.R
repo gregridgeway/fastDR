@@ -296,8 +296,17 @@ fastDR <- function(form.list,
 
    # drop empty levels
    for(j in match.vars)
-      if(is.factor(data0[,j])) data0[,j] <- factor(data0[,j])
-
+   {
+      if(is.factor(data0[,j])) 
+      {
+         data0[,j] <- factor(data0[,j])
+         # eliminate one-level factor variables from DR, svyglm would fail
+         if(nlevels(data0[,j])<=1)
+         {
+            x.form <- update(x.form,formula(paste0("~ . -",j)))
+         }
+      }
+   }
    results <- list()
 
 ### BEGIN PROPENSITY SCORE ESTIMATION ###
@@ -520,7 +529,7 @@ fastDR <- function(form.list,
       {
          # delta method? Tends to be too small
          # results$effects[[i.y]]$se.y0[3] <- sqrt(var(y.hat0)/length(y.hat0))
-         # Monte Carlo the off-diagonals
+         # Monte Carlo the off-diagonals with vcov from 1,000 random cases
          se.temp1 <- sum(vcov(y.hat0)) # vcov will return a vector here
          i <- sample(1:nrow(a), size=1000)
          y.hat0 <- predict(results$glm.dr[[i.y]],
