@@ -1,6 +1,6 @@
 Package: fastDR
-Version: 0.9-1
-Date: 2014-10-03
+Version: 0.9-2
+Date: 2015-09-16
 Title: Fast Doubly Robust Estimation
 Author: Greg Ridgeway <gridge@sas.upenn.edu>
 Maintainer: Greg Ridgeway <gridge@sas.upenn.edu>
