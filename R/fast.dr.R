@@ -491,7 +491,8 @@ fastDR <- function(form.list,
       results$effects[[i.y]] <-
          data.frame(E.y1 =rep(0,3),E.y0 =rep(0,3),
                     se.y1=rep(0,3),se.y0=rep(0,3),
-                    TE   =rep(0,3),se.TE=rep(0,3))
+                    TE   =rep(0,3),se.TE=rep(0,3),
+                    p    =rep(0,3))
       rownames(results$effects[[i.y]]) <- c("un","ps","dr")
 
       # collect unweighted statistics
@@ -502,6 +503,7 @@ fastDR <- function(form.list,
 
       results$effects[[i.y]]$TE[1]    <- coef(results$glm.un[[i.y]])[2]
       results$effects[[i.y]]$se.TE[1] <- sqrt(vcov(results$glm.un[[i.y]])[2,2])
+      results$effects[[i.y]]$p[1]     <- coef(summary(results$glm.un[[i.y]]))[2,4]
 
       # collect PS statistics
       results$effects[[i.y]]$E.y0[2]  <- means.ps0[i.y]
@@ -509,10 +511,12 @@ fastDR <- function(form.list,
 
       results$effects[[i.y]]$TE[2]    <- coef(results$glm.ps[[i.y]])[2]
       results$effects[[i.y]]$se.TE[2] <- sqrt(vcov(results$glm.ps[[i.y]])[2,2])
+      results$effects[[i.y]]$p[2]     <- coef(summary(results$glm.ps[[i.y]]))[2,4]
 
       # collect DR statistics
       results$effects[[i.y]]$TE[3]    <- coef(results$glm.dr[[i.y]])[2]
       results$effects[[i.y]]$se.TE[3] <- sqrt(vcov(results$glm.dr[[i.y]])[2,2])
+      results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
 
       a <- data0[i.treat,]
       a[,as.character(t.form[2])] <- 0 # recode treated cases as control
