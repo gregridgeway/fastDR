@@ -465,10 +465,12 @@ fastDR <- function(form.list,
           glm1 <- update(glm1, formula.=formula(a))
        }
        results$glm.dr[[i.y]] <- glm1
-       # transform from t to z for better FDR calculation
-       results$z[i.y] <- 
-          qnorm(pt(coef(summary(glm1))[2,"t value"],
-                   glm1$df.residual))
+       results$z[i.y] <- coef(summary(glm1))[2,"t value"]
+       if(FALSE) # transform from t to z for better FDR calculation
+       {
+          results$z[i.y] <- qnorm(pt(coef(summary(glm1))[2,"t value"],
+                                     glm1$df.residual))
+       }
    }
    if(verbose) cat("\nOutcome regression models complete\n")
 ### END OUTCOME ANALYSIS ###
