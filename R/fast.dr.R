@@ -459,6 +459,8 @@ fastDR <- function(form.list,
        # remove any coefficients that are NA
        if(any(is.na(glm1$coefficients)))
        {
+          warning("Some DR coefficient estimates are NA. Will try to drop them.")
+          print(glm1$coefficients[is.na(glm1$coefficients)])
           a <- paste0(".~.-",
                paste0(names(glm1$coefficients)[is.na(glm1$coefficients)],
                       collapse="-"))
