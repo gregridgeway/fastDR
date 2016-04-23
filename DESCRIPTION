@@ -8,6 +8,6 @@ Depends: R (>= 3.0.0), gbm, survey
 Description: This package uses generalized boosted models to compute
    non-parametric propensity score estimates and a propensity score
    weighted outcome regression model to compute doubly robust estimates
-   of treatment effects
+   of treatment effects.
 License: GPL-2 | file LICENSE
 URL: http://sites.google.com/site/gregridgeway
