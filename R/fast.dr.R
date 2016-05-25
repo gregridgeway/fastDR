@@ -114,6 +114,8 @@ fastDR <- function(form.list,
                    n.trees=3000,
                    interaction.depth=3,
                    shrinkage=0.01,
+                   dr.drop.levels=NULL,
+                   dr.drop.vars=NULL,
                    verbose=FALSE)
 {
    y.form       <- form.list$y.form
@@ -234,11 +236,11 @@ fastDR <- function(form.list,
    if(any(data0$samp.w<0))
       stop("Some observation weights are negative")
 
-   # create missing indicators, and median/mode impute
+   # create missing indicators, median impute numeric features
    for(xj in match.vars)
    {
       i <- which(is.na(data0[,xj]))
-      if(length(i)>10)
+      if(!is.factor(data0[[xj]]) && (length(i)>10))
       {  # create missing indicators if there are at least 10 NAs
          #   check not completely correlated with other missing indicators
          a <- rep(0, nrow(data0))
@@ -254,9 +256,9 @@ fastDR <- function(form.list,
       if(length(i)>0)
       {
          if(is.factor(data0[,xj]))
-         {  # impute the mode
-            a <- table(data0[,xj])
-            data0[i,xj] <- names(a)[which.max(a)]
+         {  # set NA to be a valid factor level
+            data0[[xj]] <- factor(data0[[xj]],exclude=NULL)
+            levels(data0[[xj]])[is.na(levels(data0[[xj]]))] <- "<NA>"
          }
          else # numeric
          {  # impute the median
@@ -303,6 +305,7 @@ fastDR <- function(form.list,
          # eliminate one-level factor variables from DR, svyglm would fail
          if(nlevels(data0[,j])<=1)
          {
+            warning("Dropping factor variable with one-level: ",j)
             x.form <- update(x.form,formula(paste0("~ . -",j)))
          }
       }
@@ -423,6 +426,32 @@ fastDR <- function(form.list,
    results$glm.dr <- vector("list",length(outcome.y))
    results$z      <- rep(NA,length(outcome.y))
 
+   # drop any factor levels user requests
+   if(!is.null(dr.drop.levels))
+   {
+      for(i in 1:length(dr.drop.levels))
+      {
+         xj <- names(dr.drop.levels)[i]
+         if(!is.factor(data0[[xj]]))
+         {
+            warning("Feature ",xj," listed in dr.drop.levels is not a factor. Skipping")
+         }
+         else
+         {
+            for(j in 1:nrow(dr.drop.levels[[i]]))
+            {
+               k <- which(data0[,xj]==dr.drop.levels[[i]][j,1])
+               data0[k,xj] <- dr.drop.levels[[i]][j,2]
+            }
+            data0[[xj]] <- droplevels(data0[[xj]])
+            if(nlevels(data0[[xj]])<=1)
+            {
+               dr.drop.vars <- c(dr.drop.vars,xj)
+            }
+         }
+      }
+   }
+
    # make sure data0 has the best prop score weights
    data0$w <- results$w
    sdesign.un <- svydesign(ids=~1,weights=~samp.w,data=data0)
@@ -450,17 +479,24 @@ fastDR <- function(form.list,
        results$glm.ps[[i.y]] <- glm1
 
        # DR
-       dr.form <- formula(paste(outcome.y[i.y],"~",
-                                as.character(t.form[[2]]),"+",
-                                as.character(x.form[2])))
+       dr.form <- paste(outcome.y[i.y],"~",
+                        as.character(t.form[[2]]),"+",
+                        as.character(x.form[2]))
+       if(!is.null(dr.drop.vars))
+       {   
+          dr.form <- paste(c(dr.form, paste(dr.drop.vars,collapse="-")), 
+                           collapse="-")
+       }
+       dr.form <- formula(dr.form)
        glm1 <- substitute(svyglm(formula=dr.form,design=sdesign.w,
                                  family=y.dist[i.y]))
        glm1 <- eval(glm1)
        # remove any coefficients that are NA
        if(any(is.na(glm1$coefficients)))
        {
-          warning("Some DR coefficient estimates are NA. Will try to drop them.")
-          print(glm1$coefficients[is.na(glm1$coefficients)])
+          warning("Some DR coefficient estimates are NA. Will try to drop:",
+                  paste(names(glm1$coefficients)[is.na(glm1$coefficients)],
+                        collapse=", "))
           a <- paste0(".~.-",
                paste0(names(glm1$coefficients)[is.na(glm1$coefficients)],
                       collapse="-"))
