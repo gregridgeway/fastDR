@@ -116,7 +116,8 @@ fastDR <- function(form.list,
                    shrinkage=0.01,
                    dr.drop.levels=NULL,
                    dr.drop.vars=NULL,
-                   verbose=FALSE)
+                   verbose=FALSE,
+                   ps.only=FALSE)
 {
    y.form       <- form.list$y.form
    if(is.null(y.form))
@@ -419,6 +420,12 @@ fastDR <- function(form.list,
    if(verbose)
       cat("Propensity score estimation complete\n")
 ### END PROPENSITY SCORE ESTIMATION ###
+
+   if(ps.only) 
+   {
+      class(results) <- "fastDR"
+      return(results)
+   }
 
 ### BEGIN OUTCOME ANALYSIS ###
    results$glm.un <- vector("list",length(outcome.y))
