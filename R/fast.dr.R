@@ -114,8 +114,6 @@ fastDR <- function(form.list,
                    n.trees=3000,
                    interaction.depth=3,
                    shrinkage=0.01,
-                   dr.drop.levels=NULL,
-                   dr.drop.vars=NULL,
                    verbose=FALSE,
                    ps.only=FALSE)
 {
@@ -211,7 +209,7 @@ fastDR <- function(form.list,
    data0 <- cbind(model.frame(y.form, data, na.action=na.pass),
                   model.frame(t.form, data, na.action=na.pass),
                   model.frame(x.form, data, na.action=na.pass))
-   
+
    # get treatment indicator and check that they are all 0/1
    i.treat <- model.frame(t.form,data, na.action=na.pass)[,1]
    if(!all(i.treat %in% 0:1))
@@ -300,7 +298,7 @@ fastDR <- function(form.list,
    # drop empty levels
    for(j in match.vars)
    {
-      if(is.factor(data0[,j])) 
+      if(is.factor(data0[,j]))
       {
          data0[,j] <- factor(data0[,j])
          # eliminate one-level factor variables from DR, svyglm would fail
@@ -346,7 +344,7 @@ fastDR <- function(form.list,
          # normalize the weights to have mean 1.0 within treatment
          data0$w[ i.treat] <- data0$w[ i.treat]/mean(data0$w[ i.treat])
          data0$w[!i.treat] <- data0$w[!i.treat]/mean(data0$w[!i.treat])
-         
+
          bal <- NULL
          for(x in match.vars)
          {
@@ -389,7 +387,7 @@ fastDR <- function(form.list,
             results$balance.tab.un <- bal
          }
       }
-      
+
       # add key to the names of the weights so user can match weights to cases
       names(results$w) <- key
       names(results$p) <- key
@@ -421,7 +419,7 @@ fastDR <- function(form.list,
       cat("Propensity score estimation complete\n")
 ### END PROPENSITY SCORE ESTIMATION ###
 
-   if(ps.only) 
+   if(ps.only)
    {
       class(results) <- "fastDR"
       return(results)
@@ -432,32 +430,6 @@ fastDR <- function(form.list,
    results$glm.ps <- vector("list",length(outcome.y))
    results$glm.dr <- vector("list",length(outcome.y))
    results$z      <- rep(NA,length(outcome.y))
-
-   # drop any factor levels user requests
-   if(!is.null(dr.drop.levels))
-   {
-      for(i in 1:length(dr.drop.levels))
-      {
-         xj <- names(dr.drop.levels)[i]
-         if(!is.factor(data0[[xj]]))
-         {
-            warning("Feature ",xj," listed in dr.drop.levels is not a factor. Skipping")
-         }
-         else
-         {
-            for(j in 1:nrow(dr.drop.levels[[i]]))
-            {
-               k <- which(data0[,xj]==dr.drop.levels[[i]][j,1])
-               data0[k,xj] <- dr.drop.levels[[i]][j,2]
-            }
-            data0[[xj]] <- droplevels(data0[[xj]])
-            if(nlevels(data0[[xj]])<=1)
-            {
-               dr.drop.vars <- c(dr.drop.vars,xj)
-            }
-         }
-      }
-   }
 
    # make sure data0 has the best prop score weights
    data0$w <- results$w
@@ -486,29 +458,37 @@ fastDR <- function(form.list,
        results$glm.ps[[i.y]] <- glm1
 
        # DR
-       dr.form <- paste(outcome.y[i.y],"~",
-                        as.character(t.form[[2]]),"+",
-                        as.character(x.form[2]))
-       if(!is.null(dr.drop.vars))
-       {   
-          dr.form <- paste(c(dr.form, paste(dr.drop.vars,collapse="-")), 
-                           collapse="-")
-       }
-       dr.form <- formula(dr.form)
-       glm1 <- substitute(svyglm(formula=dr.form,design=sdesign.w,
-                                 family=y.dist[i.y]))
-       glm1 <- eval(glm1)
-       # remove any coefficients that are NA
-       if(any(is.na(glm1$coefficients)))
+       data.mx <- model.matrix(formula(paste("~0+w+",outcome.y[i.y],"+",
+                                             as.character(t.form[[2]]),"+",
+                                             as.character(x.form[2]))),
+                               data=data0,na.action=na.pass)
+       data.mx <- data.frame(data.mx)
+       sdesign.wexp <- svydesign(ids=~1,weights=~w,data=data.mx)
+
+       dr.form <- formula(paste(outcome.y[i.y],"~",paste(names(data.mx)[c(-1,-2)],collapse="+")))
+       converged <- FALSE
+       while(!converged)
        {
-          warning("Some DR coefficient estimates are NA. Will try to drop:",
-                  paste(names(glm1$coefficients)[is.na(glm1$coefficients)],
-                        collapse=", "))
-          a <- paste0(".~.-",
-               paste0(names(glm1$coefficients)[is.na(glm1$coefficients)],
-                      collapse="-"))
-          glm1 <- update(glm1, formula.=formula(a))
+          glm1 <- substitute(svyglm(formula=dr.form,design=sdesign.wexp,
+                                    family=y.dist[i.y]))
+          glm1 <- eval(glm1)
+          converged <- all(!is.na(glm1$coefficients))
+          if(!converged)
+          {
+             to.drop <- names(glm1$coefficients[is.na(glm1$coefficients)])
+             to.drop <- setdiff(to.drop,as.character(t.form[[2]]))
+             if(all(to.drop==as.character(t.form[[2]])))
+             {
+                glm1 <- NA
+                converged <- TRUE
+             } else
+             {
+                cat("Dropping",to.drop,"\n")
+                dr.form <- update(dr.form,formula(paste(".~.",paste0("-",to.drop,collapse=""))))
+             }
+          }
        }
+
        results$glm.dr[[i.y]] <- glm1
        results$z[i.y] <- coef(summary(glm1))[2,"t value"]
        if(FALSE) # transform from t to z for better FDR calculation
@@ -565,7 +545,7 @@ fastDR <- function(form.list,
       results$effects[[i.y]]$se.TE[3] <- sqrt(vcov(results$glm.dr[[i.y]])[2,2])
       results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
 
-      a <- data0[i.treat,]
+      a <- data.mx[i.treat,]
       a[,as.character(t.form[2])] <- 0 # recode treated cases as control
       y.hat0 <- predict(results$glm.dr[[i.y]],
                         newdata=a,
