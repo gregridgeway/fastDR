@@ -9,7 +9,6 @@ fastDR(form.list,
        n.trees=3000,
        interaction.depth=3,
        shrinkage=0.01,
-       dr.drop.levels=NULL,
        verbose=FALSE)
 }
 
@@ -37,9 +36,6 @@ an additive model, 2 implies a model with up to 2-way interactions, etc.}
 \item{shrinkage}{a shrinkage parameter applied to each tree in the generalized
 boosted model expansion. Also known as the learning rate or step-size
 reduction. The default is most likely appropriate}
-
-\item{dr.drop.levels}{a named list of factor levels that will be converted to
-NA before running the regression step of the DR estimator. See details.}
 
 \item{verbose}{If TRUE, the program will print out progress and performance
 indicators}
@@ -77,8 +73,6 @@ To reuse the propensity score weights in other analyses, make sure that the code
 
 The effective sample size is the number of independent cases that would yield the same precision as the given weighted sample. It is computed as
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
-
-The \code{dr.drop.levels} parameter is useful for dropping specific levels of a factor that cannot be estimated in the regression step of the DR estimator, most likely because the level is perfectly correlated with another feature included in the regression. Such correlation does not interfere in the propensity score estimation step, but does interfere with creating a conformable design matrix to extract a variance estimate of the DR treatment effect. If certain variables cause problems in the regression step, \code{fastDR} will first attempt to drop them from the model and will print a warning indicating which variables and factor levels it is attempting to drop. If this fails, rerun \code{fastDR} with the levels dropped. This parameter should take the form of a named list, for example \code{dr.drop.levels=list(top.charge=c("DWI","drugs"),age.cat=c("<12","<18"))}
 }
 
 \value{ \code{fastDR} returns a \code{fastDR.object}, a list containing
