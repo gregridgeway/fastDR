@@ -337,7 +337,7 @@ fastDR <- function(form.list,
       best.bal <- 1
       for(j in 1:ncol(p))
       {
-         data0$w[i.treat]  <- 1
+         data0$w <- 1
          data0$w[!i.treat] <- p[!i.treat,j]/(1-p[!i.treat,j])
          data0$w <- with(data0, samp.w*w) # weights should be sampling weight*PSW
 
