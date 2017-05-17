@@ -46,10 +46,18 @@ make.fastDR.formula <-
 
 print.fastDR <- function(x, type="outcome", model="dr",... )
 {
+   if(class(object)!="fastDR")
+   {
+      stop("object must be a fastDR object, typically produced from a call to fastDR")   
+   }
+   
    if(!(type %in% c("outcome","complete")))
       stop("type parameter must be one of 'outcome' (default) or 'complete'")
 
-   if(type=="outcome")
+   if(is.null(x$effects))
+   {
+      stop("The fitted fastDR model has no estimated effects. Most likely the call to fastDR had ps.only=TRUE, which only estimates propensity scores and does not estimate treatment effects")
+   } else if(type=="outcome")
    {
       if(!(model %in% c("un","ps","dr")))
          stop("model parameter must be one of 'un', 'ps', or 'dr' (default)")
@@ -92,10 +100,28 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
 
 summary.fastDR <- function(object, ... )
 {
-   cat("Results\n")
-   print(object$effects)
-   cat("Balance table\n")
-   print(object$balance.tab)
+   if(class(object)!="fastDR")
+   {
+      stop("object must be a fastDR object, typically produced from a call to fastDR")   
+   }
+   
+   if(is.null(object$effects))
+   {
+      cat("fastDR object has no estimated treatment effects. Most likely the call to fastDR had ps.only=TRUE")
+   } else
+   {
+      cat("Results\n")
+      print(object$effects)
+   }
+   
+   if(is.null(object$balance.tab))
+   {
+      stop("fastDR object is missing the balance table. Perhaps the model did not run properly.")
+   } else
+   {
+      cat("Balance table\n")
+      print(object$balance.tab)
+   }
 }
 
 ks <- function(x,z,w)
