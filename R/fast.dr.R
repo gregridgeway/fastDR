@@ -46,7 +46,7 @@ make.fastDR.formula <-
 
 print.fastDR <- function(x, type="outcome", model="dr",... )
 {
-   if(class(object)!="fastDR")
+   if(class(x)!="fastDR")
    {
       stop("object must be a fastDR object, typically produced from a call to fastDR")   
    }
