@@ -1,4 +1,8 @@
 export(fastDR, ks, make.fastDR.formula)
-import(gbm, survey)
+import(gbm3, survey)
+importFrom("methods", "is")
+importFrom("stats", "coef", "cor", "formula", "median", "model.frame",
+             "model.matrix", "na.pass", "predict", "terms", "update",
+             "vcov", "weighted.mean")
 S3method(print,   fastDR)
 S3method(summary, fastDR)
