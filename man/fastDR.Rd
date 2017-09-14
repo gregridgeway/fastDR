@@ -9,7 +9,9 @@ fastDR(form.list,
        n.trees=3000,
        interaction.depth=3,
        shrinkage=0.01,
-       verbose=FALSE)
+       verbose=FALSE,
+       ps.only=FALSE,
+       smooth.lm=0)
 }
 
 \arguments{
@@ -37,8 +39,12 @@ an additive model, 2 implies a model with up to 2-way interactions, etc.}
 boosted model expansion. Also known as the learning rate or step-size
 reduction. The default is most likely appropriate}
 
-\item{verbose}{If TRUE, the program will print out progress and performance
+\item{verbose}{If TRUE, the fastDR will print out progress and performance
 indicators}
+
+\item{ps.only}{If TRUE, the fastDR will skip the DR step and just return the propensity scores. This is useful if you need to do non-standard changes to the regression model, like eliminating some covariates}
+
+\item{smooth.lm}{a numeric value for penalizing the size of the covariates in the DR step}
 
 }
 
@@ -73,6 +79,9 @@ To reuse the propensity score weights in other analyses, make sure that the code
 
 The effective sample size is the number of independent cases that would yield the same precision as the given weighted sample. It is computed as
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
+
+When \code{smooth.lm} is greater than 0, \code{fastDR} uses a data augmentation method to impose a penalty on the regression coefficients in the DR step. At a minimum, modest penalties provide numerical stability in the event of correlation among the covariates or certain features being highly predictive of the outcome. \code{fastDR} does not penalize the intercept or treatment indicator. \code{fastDR} uses the data augmentation approach described in Greenland and Mansournia (2015). This approach uses ridge regression penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic regression, and gamma(m,m) prior for Poisson regression. The appropriate size of the penalty is subjective, but values between 0.1 and 4.0 are modest penalties for general application.
+
 }
 
 \value{ \code{fastDR} returns a \code{fastDR.object}, a list containing
@@ -101,12 +110,16 @@ treatment,} \emph{Psychological Methods} 9(4):403-425.
 J.H. Friedman (2001). \dQuote{Greedy Function Approximation: A Gradient
 Boosting Machine,} \emph{Annals of Statistics} 29(5):1189-1232.
 
+S. Greenland and M.A. Mansournia (2015). \dQuote{Penalization, bias reduction, and default priors in logistic and related categorical and survival regressions,} \emph{Statistics in Medicine} 34:3133-3143.
+
+S. Greenland, M.A. Mansournia, and D.G. Altman (2014). \dQuote{Sparse data bias: a problem hiding in plain sight,} \emph{The BMJ} 353:i1981.
+
 \url{http://sites.google.com/site/gregridgeway}
 
 }
 
 
-\author{Greg Ridgeway \email{gridge@sas.upenn.edu}}
+\author{Greg Ridgeway \email{gridge@upenn.edu}}
 
 \seealso{ \code{\link{gbm}} }
 
@@ -134,13 +147,14 @@ dr1 <- fastDR(list(y.form=~HI_CHOL,          # high cholesterol (over 240mg/dl)
               n.trees=1000,
               interaction.depth=3,
               shrinkage=0.005,
-              verbose=TRUE)             # print out detailed progress
+              verbose=TRUE,             # print out detailed progress
+              smooth.lm=0.1)            # stabilize regression coefs
 
 # show balance table
 round(dr1$balance.tab,3)
 
 # compute odds-ratio
-print(dr1,type="outcome", model="dr")
+print(dr1, type="outcome", model="dr")
 
 }
 
