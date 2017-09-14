@@ -141,7 +141,8 @@ fastDR <- function(form.list,
                    interaction.depth=3,
                    shrinkage=0.01,
                    verbose=FALSE,
-                   ps.only=FALSE)
+                   ps.only=FALSE,
+                   smooth.lm=0)
 {
    y.form       <- form.list$y.form
    if(is.null(y.form))
@@ -344,16 +345,19 @@ fastDR <- function(form.list,
    while(!converged)
    {
       if(verbose) cat("shrinkage:",round(shrinkage,4),"\n")
-      gbm1 <- gbm(ps.form,
-                  data=data0,
-                  weights=data0$samp.w,
-                  distribution="bernoulli",
-                  n.trees=n.trees,
-                  interaction.depth=interaction.depth,
-                  shrinkage=shrinkage,
-                  verbose=verbose,
-                  keep.data=FALSE,
-                  bag.fraction=1.0)
+      gbm1 <- gbmt(ps.form,
+                   distribution=gbm_dist("Bernoulli"),
+                   data=data0,
+                   weights=data0$samp.w,
+                   train_params=
+                      training_params(num_trees=n.trees,
+                                      interaction_depth=interaction.depth,
+                                      shrinkage=shrinkage,
+                                      bag_fraction=1.0,
+                                      num_train=nrow(data0),
+                                      num_features=length(match.vars)),
+                   is_verbose=verbose,
+                   keep_gbm_data=FALSE)
 
       iters <- c(0,seq(trunc(n.trees*0.3),n.trees,length=11))
       p <- predict(gbm1,newdata=data0,n.trees=iters,type="response")
@@ -484,14 +488,36 @@ fastDR <- function(form.list,
        results$glm.ps[[i.y]] <- glm1
 
        # DR
-       data.mx <- model.matrix(formula(paste("~0+w+",outcome.y[i.y],"+",
+       nMissingOutcome <- sum(is.na(data0[[outcome.y[i.y]]]))
+       if(nMissingOutcome > 0)
+          warning("Outcome ",outcome.y[i.y]," has ",nMissingOutcome," missing values. They are included in the propensity score stage but dropped from the regression step")
+
+       #    create intercept here... need control of it for prior penalty
+       data.mx <- model.matrix(formula(paste("~w+",outcome.y[i.y],"+",
                                              as.character(t.form[[2]]),"+",
                                              as.character(x.form[2]))),
-                               data=data0,na.action=na.pass)
-       data.mx <- data.frame(data.mx)
-       sdesign.wexp <- svydesign(ids=~1,weights=~w,data=data.mx)
+                               data=data0)
+       colnames(data.mx)[1] <- "Intercept"
+       i.treat <- data.mx[,4]==1
+       
+       # put penalty on regression terms
+       if(smooth.lm>0)
+       {
+          a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = ncol(data.mx)-4))
+          data.mx <- rbind(data.mx, a)
+          if(y.dist[[i.y]]=="quasibinomial") # for log-F distribution need two rows
+          {
+             a[,3] <- 1 # set outcome to 1
+             data.mx <- rbind(data.mx, a)
+          }
+       }
+       
+       data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
 
-       dr.form <- formula(paste(outcome.y[i.y],"~",paste(names(data.mx)[c(-1,-2)],collapse="+")))
+       sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
+
+       dr.form <- formula(paste(outcome.y[i.y],"~-1+Intercept+",
+                                paste(names(data.mx)[-(1:3)],collapse="+")))
        converged <- FALSE
        while(!converged)
        {
@@ -571,7 +597,9 @@ fastDR <- function(form.list,
       results$effects[[i.y]]$se.TE[3] <- sqrt(vcov(results$glm.dr[[i.y]])[2,2])
       results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
 
-      a <- data.mx[i.treat,]
+      # only real treated cases, not those for shrinking beta
+      stopifnot(sum(data.mx$Intercept)==length(i.treat))
+      a <- subset(data.mx, Intercept==1)[i.treat,]
       a[,as.character(t.form[2])] <- 0 # recode treated cases as control
       y.hat0 <- predict(results$glm.dr[[i.y]],
                         newdata=a,
