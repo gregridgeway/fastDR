@@ -2,8 +2,8 @@ Package: fastDR
 Version: 0.9-3
 Date: 2017-09-13
 Title: Fast Doubly Robust Estimation
-Author: Greg Ridgeway <gridge@sas.upenn.edu>
-Maintainer: Greg Ridgeway <gridge@sas.upenn.edu>
+Author: Greg Ridgeway <gridge@upenn.edu>
+Maintainer: Greg Ridgeway <gridge@upenn.edu>
 Depends: R (>= 3.0.0), gbm3, survey
 Imports: methods
 Description: This package uses generalized boosted models to compute
