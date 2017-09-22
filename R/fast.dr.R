@@ -48,9 +48,9 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
 {
    if(class(x)!="fastDR")
    {
-      stop("object must be a fastDR object, typically produced from a call to fastDR")   
+      stop("object must be a fastDR object, typically produced from a call to fastDR")
    }
-   
+
    if(!(type %in% c("outcome","complete")))
       stop("type parameter must be one of 'outcome' (default) or 'complete'")
 
@@ -102,9 +102,9 @@ summary.fastDR <- function(object, ... )
 {
    if(class(object)!="fastDR")
    {
-      stop("object must be a fastDR object, typically produced from a call to fastDR")   
+      stop("object must be a fastDR object, typically produced from a call to fastDR")
    }
-   
+
    if(is.null(object$effects))
    {
       cat("fastDR object has no estimated treatment effects. Most likely the call to fastDR had ps.only=TRUE")
@@ -113,7 +113,7 @@ summary.fastDR <- function(object, ... )
       cat("Results\n")
       print(object$effects)
    }
-   
+
    if(is.null(object$balance.tab))
    {
       stop("fastDR object is missing the balance table. Perhaps the model did not run properly.")
@@ -241,7 +241,9 @@ fastDR <- function(form.list,
    i.treat <- model.frame(t.form,data, na.action=na.pass)[,1]
    if(!all(i.treat %in% 0:1))
       stop("The treatment indicator specified in t.form does not only take values 0 or 1. The treatment indicator must be a 0 or a 1")
-   i.treat <- i.treat==1
+   # expressions that can be eval'd in subset() to select treat/control cases
+   subsetExpr0 <- parse(text=paste(as.character(t.form[[2]]),"==0"))
+   subsetExpr1 <- parse(text=paste(as.character(t.form[[2]]),"==1"))
 
    # extract the variables names in X
    match.vars <- names(data0)[-(1:(n.outcomes+1))]
@@ -314,13 +316,12 @@ fastDR <- function(form.list,
    k <- rep(TRUE,nrow(data0))
    for(xj in match.vars[sapply(data0[1,match.vars],is.factor)])
    {
-      a <- unique(data0[i.treat,xj])
+      a <- subset(data0, eval(subsetExpr1))[[xj]]
       k <- k & (is.na(data0[,xj]) | (data0[,xj] %in% a))
    }
 
    data0   <- data0[k,]
    key     <- key[k]
-   i.treat <- i.treat[k]
 
    # drop empty levels
    for(j in match.vars)
@@ -368,26 +369,28 @@ fastDR <- function(form.list,
       for(j in 1:ncol(p))
       {
          data0$w <- 1
-         data0$w[!i.treat] <- p[!i.treat,j]/(1-p[!i.treat,j])
+         i.cntrl <- with(data0, eval(subsetExpr0))
+         i.treat <- with(data0, eval(subsetExpr1))
+         data0$w[i.cntrl] <- p[i.cntrl,j]/(1-p[i.cntrl,j])
          data0$w <- with(data0, samp.w*w) # weights should be sampling weight*PSW
 
          # normalize the weights to have mean 1.0 within treatment
-         data0$w[ i.treat] <- data0$w[ i.treat]/mean(data0$w[ i.treat])
-         data0$w[!i.treat] <- data0$w[!i.treat]/mean(data0$w[!i.treat])
+         data0$w[i.treat] <- data0$w[i.treat]/max(data0$w[i.treat])
+         data0$w[i.cntrl] <- data0$w[i.cntrl]/max(data0$w[i.cntrl])
 
          bal <- NULL
          for(x in match.vars)
          {
             if(is.factor(data0[,x]))
             {
-               a <- cbind(sapply(split(data0$w[!i.treat], data0[!i.treat,x]), sum),
-                          sapply(split(data0$w[i.treat],  data0[i.treat,x]),  sum))
+               a <- cbind(sapply(split(data0$w[i.cntrl], data0[i.cntrl,x]), sum),
+                          sapply(split(data0$w[i.treat], data0[i.treat,x]), sum))
                a <- t(t(a)/colSums(a))
                a <- cbind(a, a[,2]-a[,1])
                rownames(a) <- paste(x,":",rownames(a),sep="")
             } else
             {
-               a <- c(weighted.mean(data0[!i.treat,x],data0$w[!i.treat],na.rm=TRUE),
+               a <- c(weighted.mean(data0[i.cntrl,x], data0$w[i.cntrl], na.rm=TRUE),
                       weighted.mean(data0[i.treat,x], data0$w[i.treat] ,na.rm=TRUE))
                a <- c(a, ks(data0[,x],i.treat,data0$w))
                a <- matrix(a,nrow=1)
@@ -440,8 +443,10 @@ fastDR <- function(form.list,
       shrinkage <- shrinkage*results$best.iter/(n.trees*0.75)
    }
 
+   i.cntrl <- with(data0, which(eval(subsetExpr0)))
+   i.treat <- with(data0, which(eval(subsetExpr1)))
    results$n1  <- sum(i.treat)
-   w0 <- results$w[!i.treat]
+   w0 <- results$w[i.cntrl]
    results$ESS <- sum(w0)^2/sum(w0^2)
    colnames(results$balance.tab.un) <- c("control","treatment","KS")
    colnames(results$balance.tab)    <- c("control","treatment","KS")
@@ -498,8 +503,7 @@ fastDR <- function(form.list,
                                              as.character(x.form[2]))),
                                data=data0)
        colnames(data.mx)[1] <- "Intercept"
-       i.treat <- data.mx[,4]==1
-       
+
        # put penalty on regression terms
        if(smooth.lm>0)
        {
@@ -511,7 +515,7 @@ fastDR <- function(form.list,
              data.mx <- rbind(data.mx, a)
           }
        }
-       
+
        data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
 
        sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
@@ -557,12 +561,15 @@ fastDR <- function(form.list,
    names(results$effects) <- attr(terms(y.form),"term.labels")
 
    # unweighted results
-   sdesign   <- svydesign(ids=~1,weights=~samp.w,data=data0[i.treat,])
+   sdesign   <- svydesign(ids=~1, weights=~samp.w,
+                          data=subset(data0, eval(subsetExpr1)))
    means.un1 <- svymean(y.form,design=sdesign,na.rm=TRUE)
-   sdesign   <- svydesign(ids=~1,weights=~samp.w,data=data0[!i.treat,])
+   sdesign   <- svydesign(ids=~1, weights=~samp.w,
+                          data=subset(data0, eval(subsetExpr0)))
    means.un0 <- svymean(y.form,design=sdesign,na.rm=TRUE)
    # propensity score results
-   sdesign   <- svydesign(ids=~1,weights=~w,data=data0[!i.treat,])
+   sdesign   <- svydesign(ids=~1, weights=~w,
+                          data=subset(data0, eval(subsetExpr0)))
    means.ps0 <- svymean(y.form,design=sdesign,na.rm=TRUE)
 
    for(i.y in 1:length(outcome.y))
@@ -598,16 +605,15 @@ fastDR <- function(form.list,
       results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
 
       # only real treated cases, not those for shrinking beta
-      stopifnot(sum(data.mx$Intercept)==length(i.treat))
-      a <- subset(data.mx, Intercept==1)[i.treat,]
+      a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
       a[,as.character(t.form[2])] <- 0 # recode treated cases as control
       y.hat0 <- predict(results$glm.dr[[i.y]],
                         newdata=a,
                         type="response",
-                        vcov=sum(i.treat)<1000) # use true Cov if Ntreat<1000
+                        vcov=nrow(a)<1000) # use true Cov if Ntreat<1000
       results$effects[[i.y]]$E.y0[3]  <- mean(y.hat0)
 
-      if(sum(i.treat)<1000) # use exact Cov for SE calculation
+      if(nrow(a)<1000) # use exact Cov for SE calculation
       {
          results$effects[[i.y]]$se.y0[3] <- sqrt(mean(vcov(y.hat0)))
       } else
