@@ -199,6 +199,12 @@ fastDR <- function(form.list,
       y.dist[y.dist=="poisson"] <- "quasipoisson"
       warning("Using 'quasipoisson' instead of 'poisson'")
    }
+   
+   if(n.trees<14)
+   {
+      n.trees <- 14
+      warning("n.trees set less than 14. fastDR reset n.trees to 14.")
+   }
 
    # need to use a variable called w and samp.w
    if("w" %in% names(data))
