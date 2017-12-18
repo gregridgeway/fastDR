@@ -451,7 +451,7 @@ fastDR <- function(form.list,
 
    i.cntrl <- with(data0, which(eval(subsetExpr0)))
    i.treat <- with(data0, which(eval(subsetExpr1)))
-   results$n1  <- sum(i.treat)
+   results$n1  <- length(i.treat)
    w0 <- results$w[i.cntrl]
    results$ESS <- sum(w0)^2/sum(w0^2)
    colnames(results$balance.tab.un) <- c("control","treatment","KS")
