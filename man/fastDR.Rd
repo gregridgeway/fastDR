@@ -11,6 +11,7 @@ fastDR(form.list,
        shrinkage=0.01,
        verbose=FALSE,
        ps.only=FALSE,
+       keepGLM=TRUE,
        smooth.lm=0)
 }
 
@@ -43,6 +44,8 @@ reduction. The default is most likely appropriate}
 indicators}
 
 \item{ps.only}{If TRUE, the fastDR will skip the DR step and just return the propensity scores. This is useful if you need to do non-standard changes to the regression model, like eliminating some covariates}
+
+\item{keepGLM}{if TRUE, keep a copy of the \code{glm} objects produced in the outcome model step. These models can become large with multiple outcomes and large datasets}
 
 \item{smooth.lm}{a numeric value for penalizing the size of the covariates in the DR step}
 
@@ -78,6 +81,8 @@ The effective sample size is the number of independent cases that would yield th
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
 
 When \code{smooth.lm} is greater than 0, \code{fastDR} uses a data augmentation method to impose a penalty on the regression coefficients in the DR step. At a minimum, modest penalties provide numerical stability in the event of correlation among the covariates or certain features being highly predictive of the outcome. \code{fastDR} does not penalize the intercept or treatment indicator. \code{fastDR} uses the data augmentation approach described in Greenland and Mansournia (2015). This approach uses ridge regression penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic regression, and gamma(m,m) prior for Poisson regression. The appropriate size of the penalty is subjective, but values between 0.1 and 4.0 are modest penalties for general application.
+
+If the number of treatment cases exceeds 1500, then \code{fastDR} will take a random sample of 1500 cases for computing the standard errors of the estimates of E(Y1|t=1) and E(Y1-Y0|t=1). Computing the standard error requires computing the mean of the n1*n1 covariance matrix of predicted values, which can require a lot of memory when n1 is large, but can be efficiently estimated with a sample. Note that there will be some amount of sampling variability.
 
 }
 
