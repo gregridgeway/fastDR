@@ -72,16 +72,15 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
          cat(names(x$effects)[i],":\n",sep="")
          temp <- x$effects[[i]]
          temp <- temp[model,"TE"] + c(0,-2,2)*temp[model,"se.TE"]
+         temp <- signif(temp,3)
          if(x$y.dist[i] %in% c("binomial","quasibinomial"))
          {
-            temp <- signif(exp(temp),3)
-            cat("odds-ratio (95% CI): ",temp[1],
+            cat("percentage point difference (95% CI): ",temp[1],
                 " (",temp[2],",",temp[3],")\n",sep="")
          }
          else if(x$y.dist[i] %in% c("poisson","quasipoisson"))
          {
-            temp <- signif(exp(temp),3)
-            cat("rate-ratio (95% CI): ",temp[1],
+            cat("rate difference (95% CI): ",temp[1],
                 " (",temp[2],",",temp[3],")\n",sep="")
          }
          else
@@ -142,8 +141,13 @@ fastDR <- function(form.list,
                    shrinkage=0.01,
                    verbose=FALSE,
                    ps.only=FALSE,
+                   keepGLM=TRUE,
                    smooth.lm=0)
 {
+   if(!keepGLM)
+   {
+      warning("keepGLM=FALSE not yet implemented")
+   }
    y.form       <- form.list$y.form
    if(is.null(y.form))
       stop("form.list is missing y.form")
@@ -467,15 +471,18 @@ fastDR <- function(form.list,
    }
 
 ### BEGIN OUTCOME ANALYSIS ###
-   results$glm.un <- vector("list",length(outcome.y))
-   results$glm.ps <- vector("list",length(outcome.y))
-   results$glm.dr <- vector("list",length(outcome.y))
+   if(keepGLM)
+   {
+      results$glm.un <- vector("list",length(outcome.y))
+      results$glm.ps <- vector("list",length(outcome.y))
+      results$glm.dr <- vector("list",length(outcome.y))
+   }
    results$z      <- rep(NA,length(outcome.y))
 
    # make sure data0 has the best prop score weights
    data0$w <- results$w
-   sdesign.un <- svydesign(ids=~1,weights=~samp.w,data=data0)
-   sdesign.w  <- svydesign(ids=~1,weights=~w,     data=data0)
+   sdesign.un <- svydesign(ids=~1, weights=~samp.w, data=data0)
+   sdesign.w  <- svydesign(ids=~1, weights=~w,      data=data0)
    if(verbose)
       cat("Fitting outcome regression models...")
 
@@ -523,7 +530,6 @@ fastDR <- function(form.list,
        }
 
        data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
-
        sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
 
        dr.form <- formula(paste(outcome.y[i.y],"~-1+Intercept+",
@@ -572,18 +578,18 @@ fastDR <- function(form.list,
    means.un1 <- svymean(y.form,design=sdesign,na.rm=TRUE)
    sdesign   <- svydesign(ids=~1, weights=~samp.w,
                           data=subset(data0, eval(subsetExpr0)))
-   means.un0 <- svymean(y.form,design=sdesign,na.rm=TRUE)
+   means.un0 <- svymean(y.form, design=sdesign, na.rm=TRUE)
    # propensity score results
    sdesign   <- svydesign(ids=~1, weights=~w,
                           data=subset(data0, eval(subsetExpr0)))
-   means.ps0 <- svymean(y.form,design=sdesign,na.rm=TRUE)
+   means.ps0 <- svymean(y.form, design=sdesign, na.rm=TRUE)
 
    for(i.y in 1:length(outcome.y))
    {
       results$effects[[i.y]] <-
-         data.frame(E.y1 =rep(0,3),E.y0 =rep(0,3),
-                    se.y1=rep(0,3),se.y0=rep(0,3),
-                    TE   =rep(0,3),se.TE=rep(0,3),
+         data.frame(E.y1 =rep(0,3), E.y0 =rep(0,3),
+                    se.y1=rep(0,3), se.y0=rep(0,3),
+                    TE   =rep(0,3), se.TE=rep(0,3),
                     p    =rep(0,3))
       rownames(results$effects[[i.y]]) <- c("un","ps","dr")
 
@@ -593,51 +599,87 @@ fastDR <- function(form.list,
       results$effects[[i.y]]$se.y1[]  <- sqrt(diag(vcov(means.un1))[i.y])
       results$effects[[i.y]]$se.y0[1] <- sqrt(diag(vcov(means.un0))[i.y])
 
-      results$effects[[i.y]]$TE[1]    <- coef(results$glm.un[[i.y]])[2]
-      results$effects[[i.y]]$se.TE[1] <- sqrt(vcov(results$glm.un[[i.y]])[2,2])
+      a <- rbind(subset(data0, eval(subsetExpr0))[1,],
+                 subset(data0, eval(subsetExpr1))[1,])
+      u <- c(-1,1)
+      y.hat0 <- predict(results$glm.un[[i.y]], newdata=a, type="response", vcov=TRUE)
+      
+      results$effects[[i.y]]$TE[1]    <- t(u) %*% y.hat0
+      results$effects[[i.y]]$se.TE[1] <- sqrt(t(u) %*% vcov(y.hat0) %*% u)
       results$effects[[i.y]]$p[1]     <- coef(summary(results$glm.un[[i.y]]))[2,4]
 
       # collect PS statistics
       results$effects[[i.y]]$E.y0[2]  <- means.ps0[i.y]
       results$effects[[i.y]]$se.y0[2] <- sqrt(diag(vcov(means.ps0))[i.y])
 
-      results$effects[[i.y]]$TE[2]    <- coef(results$glm.ps[[i.y]])[2]
-      results$effects[[i.y]]$se.TE[2] <- sqrt(vcov(results$glm.ps[[i.y]])[2,2])
+      y.hat0 <- predict(results$glm.ps[[i.y]], newdata=a, type="response", vcov=TRUE)
+      results$effects[[i.y]]$TE[2]    <- t(u) %*% y.hat0
+      results$effects[[i.y]]$se.TE[2] <- sqrt(t(u) %*% vcov(y.hat0) %*% u)
       results$effects[[i.y]]$p[2]     <- coef(summary(results$glm.ps[[i.y]]))[2,4]
 
       # collect DR statistics
-      results$effects[[i.y]]$TE[3]    <- coef(results$glm.dr[[i.y]])[2]
-      results$effects[[i.y]]$se.TE[3] <- sqrt(vcov(results$glm.dr[[i.y]])[2,2])
       results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
 
       # only real treated cases, not those for shrinking beta
       a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
-      a[,as.character(t.form[2])] <- 0 # recode treated cases as control
+      n <- nrow(a)
+      a <- rbind(a,a)
+      a[1:n, as.character(t.form[2])] <- 0 # recode treated cases as control
       y.hat0 <- predict(results$glm.dr[[i.y]],
                         newdata=a,
-                        type="response",
-                        vcov=nrow(a)<1000) # use true Cov if Ntreat<1000
-      results$effects[[i.y]]$E.y0[3]  <- mean(y.hat0)
+                        type="response")
+      results$effects[[i.y]]$E.y0[3] <- mean(y.hat0[1:n])
+      results$effects[[i.y]]$TE[3]   <- with(results$effects[[i.y]], E.y1[3]-E.y0[3])
 
-      if(nrow(a)<1000) # use exact Cov for SE calculation
+      if(sign(coef(results$glm.dr[[i.y]])[2]) != 
+         sign(results$effects[[i.y]]$TE[3]))
       {
-         results$effects[[i.y]]$se.y0[3] <- sqrt(mean(vcov(y.hat0)))
+         warning("Outcome regression model treatment coefficient has a different sign than the estimated treatment effect. That is a little unusual and might need a closer look.")   
+      }
+      
+      if(nrow(a)<=3000)
+      {
+         u <- cbind(rep(1:0,each=n),         # for SE(EY0)
+                    rep(c(-1,1),each=n))/n   # for SE(EY1-EY0)
+         y.hat0 <- predict(results$glm.dr[[i.y]], 
+                           newdata=a, 
+                           type="response", 
+                           vcov=TRUE)
+         se.TE <- sqrt(diag(t(u) %*% vcov(y.hat0) %*% u))
       } else
       {
-         # delta method? Tends to be too small
-         # results$effects[[i.y]]$se.y0[3] <- sqrt(var(y.hat0)/length(y.hat0))
-         # Monte Carlo the off-diagonals with vcov from 1,000 random cases
-         se.temp1 <- sum(vcov(y.hat0)) # vcov will return a vector here
-         i <- sample(1:nrow(a), size=1000)
-         y.hat0 <- predict(results$glm.dr[[i.y]],
-                           newdata=a[i,],
-                           type="response",
+         VdiagE0 <- sum(vcov(y.hat0)[1:n]) # vcov will return a vector here
+         VdiagTE <- sum(vcov(y.hat0))
+         
+         n0 <- 1500
+         a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
+         a <- a[sample(1:nrow(a), size=n0),]
+         a <- rbind(a,a)
+         a[1:n0, as.character(t.form[2])] <- 0 # recode treated cases as control
+         y.hat0 <- predict(results$glm.dr[[i.y]], 
+                           newdata=a, 
+                           type="response", 
                            vcov=TRUE)
-         se.temp2 <- sum(vcov(y.hat0))-sum(diag(vcov(y.hat0)))
-         se.temp2 <- nrow(a)*(nrow(a)-1)*se.temp2/(length(i)*(length(i)-1))
-         results$effects[[i.y]]$se.y0[3] <-
-            sqrt((se.temp1+se.temp2)/(nrow(a)^2))
+         
+         # se(EY0)
+         V <- vcov(y.hat0)[1:n0,1:n0]
+         VoffdiagE0 <- sum(V)-sum(diag(V))
+         VoffdiagE0 <- n*(n-1)*VoffdiagE0/(n0*(n0-1))
+         VEY0 <- VdiagE0 + VoffdiagE0
+         
+         # se(ET1-EY0)
+         # for the difference variance is
+         #   mean(V[1:n,1:n])-2*mean(V[1:n,-(1:n)])+mean(V[-(1:n),-(1:n)])
+         V <- vcov(y.hat0)
+         VTE <- VdiagTE + n*(n-1)*
+            (sum(V[  1:n0,   1:n0]) +
+                sum(V[-(1:n0),-(1:n0)]) -
+                sum(diag(V)) -
+                2*sum(V[1:n0,-(1:n0)])) / (n0*(n0-1))
+         se.TE <- sqrt(c(VEY0, VTE))/n
       }
+      results$effects[[i.y]]$se.y0[3] <- se.TE[1]
+      results$effects[[i.y]]$se.TE[3] <- se.TE[2]
    }
 
 ### END TREATMENT CALCULATION ###
