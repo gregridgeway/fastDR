@@ -144,10 +144,6 @@ fastDR <- function(form.list,
                    keepGLM=TRUE,
                    smooth.lm=0)
 {
-   if(!keepGLM)
-   {
-      warning("keepGLM=FALSE not yet implemented")
-   }
    y.form       <- form.list$y.form
    if(is.null(y.form))
       stop("form.list is missing y.form")
@@ -483,107 +479,21 @@ fastDR <- function(form.list,
    data0$w <- results$w
    sdesign.un <- svydesign(ids=~1, weights=~samp.w, data=data0)
    sdesign.w  <- svydesign(ids=~1, weights=~w,      data=data0)
-   if(verbose)
-      cat("Fitting outcome regression models...")
-
-   for(i.y in 1:length(outcome.y))
-   {
-       ps.form <- formula(paste(outcome.y[i.y],"~",
-                                as.character(t.form[[2]])))
-       if(verbose) cat(outcome.y[i.y],"...")
-
-       # unweighted analysis
-       # must use "substitute" to inject arguments into svyglm, scoping issue
-       glm1 <- substitute(svyglm(formula=ps.form,design=sdesign.un,
-                                 family=y.dist[i.y]))
-       glm1 <- eval(glm1)
-       results$glm.un[[i.y]] <- glm1
-
-       # propensity score
-       glm1 <- substitute(svyglm(formula=ps.form,design=sdesign.w,
-                                 family=y.dist[i.y]))
-       glm1 <- eval(glm1)
-       results$glm.ps[[i.y]] <- glm1
-
-       # DR
-       nMissingOutcome <- sum(is.na(data0[[outcome.y[i.y]]]))
-       if(nMissingOutcome > 0)
-          warning("Outcome ",outcome.y[i.y]," has ",nMissingOutcome," missing values. They are included in the propensity score stage but dropped from the regression step")
-
-       #    create intercept here... need control of it for prior penalty
-       data.mx <- model.matrix(formula(paste("~w+",outcome.y[i.y],"+",
-                                             as.character(t.form[[2]]),"+",
-                                             as.character(x.form[2]))),
-                               data=data0)
-       colnames(data.mx)[1] <- "Intercept"
-
-       # put penalty on regression terms
-       if(smooth.lm>0)
-       {
-          a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = ncol(data.mx)-4))
-          data.mx <- rbind(data.mx, a)
-          if(y.dist[[i.y]]=="quasibinomial") # for log-F distribution need two rows
-          {
-             a[,3] <- 1 # set outcome to 1
-             data.mx <- rbind(data.mx, a)
-          }
-       }
-
-       data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
-       sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
-
-       dr.form <- formula(paste(outcome.y[i.y],"~-1+Intercept+",
-                                paste(names(data.mx)[-(1:3)],collapse="+")))
-       converged <- FALSE
-       while(!converged)
-       {
-          glm1 <- substitute(svyglm(formula=dr.form,design=sdesign.wexp,
-                                    family=y.dist[i.y]))
-          glm1 <- eval(glm1)
-          converged <- all(!is.na(glm1$coefficients))
-          if(!converged)
-          {
-             to.drop <- names(glm1$coefficients[is.na(glm1$coefficients)])
-             to.drop <- setdiff(to.drop,as.character(t.form[[2]]))
-             if(all(to.drop==as.character(t.form[[2]])))
-             {
-                glm1 <- NA
-                converged <- TRUE
-             } else
-             {
-                cat("Dropping",to.drop,"\n")
-                dr.form <- update(dr.form,formula(paste(".~.",paste0("-",to.drop,collapse=""))))
-             }
-          }
-       }
-
-       results$glm.dr[[i.y]] <- glm1
-       results$z[i.y] <- coef(summary(glm1))[2,"t value"]
-       if(FALSE) # transform from t to z for better FDR calculation
-       {
-          results$z[i.y] <- qnorm(pt(coef(summary(glm1))[2,"t value"],
-                                     glm1$df.residual))
-       }
-   }
-   if(verbose) cat("\nOutcome regression models complete\n")
-### END OUTCOME ANALYSIS ###
-
-### BEGIN TREATMENT CALCULATION ###
+   means.un1 <- svymean(y.form,
+                        design=subset(sdesign.un, eval(subsetExpr1)),
+                        na.rm=TRUE)
+   means.un0 <- svymean(y.form, 
+                        design=subset(sdesign.un, eval(subsetExpr0)),
+                        na.rm=TRUE)
+   means.ps0 <- svymean(y.form,
+                        design=subset(sdesign.w, eval(subsetExpr0)),
+                        na.rm=TRUE)
+   
+   # for storing the results
    results$effects <- vector("list",length(outcome.y))
    names(results$effects) <- attr(terms(y.form),"term.labels")
-
-   # unweighted results
-   sdesign   <- svydesign(ids=~1, weights=~samp.w,
-                          data=subset(data0, eval(subsetExpr1)))
-   means.un1 <- svymean(y.form,design=sdesign,na.rm=TRUE)
-   sdesign   <- svydesign(ids=~1, weights=~samp.w,
-                          data=subset(data0, eval(subsetExpr0)))
-   means.un0 <- svymean(y.form, design=sdesign, na.rm=TRUE)
-   # propensity score results
-   sdesign   <- svydesign(ids=~1, weights=~w,
-                          data=subset(data0, eval(subsetExpr0)))
-   means.ps0 <- svymean(y.form, design=sdesign, na.rm=TRUE)
-
+   
+   if(verbose) cat("Fitting outcome regression models...")
    for(i.y in 1:length(outcome.y))
    {
       results$effects[[i.y]] <-
@@ -592,46 +502,124 @@ fastDR <- function(form.list,
                     TE   =rep(0,3), se.TE=rep(0,3),
                     p    =rep(0,3))
       rownames(results$effects[[i.y]]) <- c("un","ps","dr")
+      
+      ps.form <- formula(paste(outcome.y[i.y],"~",
+                               as.character(t.form[[2]])))
+      if(verbose) cat(outcome.y[i.y],"...")
 
-      # collect unweighted statistics
+      ### unweighted analysis ###
+      # must use "substitute" to inject arguments into svyglm, scoping issue
+      glm1 <- substitute(svyglm(formula = ps.form, 
+                                design  = sdesign.un,
+                                family  = y.dist[i.y]))
+      glm1 <- eval(glm1)
+      if(keepGLM) results$glm.un[[i.y]] <- glm1
+
       results$effects[[i.y]]$E.y1[]   <- means.un1[i.y]
       results$effects[[i.y]]$E.y0[1]  <- means.un0[i.y]
       results$effects[[i.y]]$se.y1[]  <- sqrt(diag(vcov(means.un1))[i.y])
       results$effects[[i.y]]$se.y0[1] <- sqrt(diag(vcov(means.un0))[i.y])
 
-      a <- rbind(subset(data0, eval(subsetExpr0))[1,],
-                 subset(data0, eval(subsetExpr1))[1,])
-      u <- c(-1,1)
-      y.hat0 <- predict(results$glm.un[[i.y]], newdata=a, type="response", vcov=TRUE)
+      # grab a generic treatment row and control row
+      dataTwoRows01 <- rbind(subset(data0, eval(subsetExpr0))[1,],
+                             subset(data0, eval(subsetExpr1))[1,])
+      y.hat0 <- predict(glm1, newdata=dataTwoRows01, type="response", vcov=TRUE)
       
-      results$effects[[i.y]]$TE[1]    <- t(u) %*% y.hat0
-      results$effects[[i.y]]$se.TE[1] <- sqrt(t(u) %*% vcov(y.hat0) %*% u)
-      results$effects[[i.y]]$p[1]     <- coef(summary(results$glm.un[[i.y]]))[2,4]
+      results$effects[[i.y]]$TE[1]    <- t(c(-1,1)) %*% y.hat0
+      results$effects[[i.y]]$se.TE[1] <- sqrt(t(c(-1,1)) %*% vcov(y.hat0) %*% c(-1,1))
+      results$effects[[i.y]]$p[1]     <- coef(summary(glm1))[2,4]
+       
+      ### propensity score ###
+      glm1 <- substitute(svyglm(formula = ps.form,
+                                design  = sdesign.w,
+                                family  = y.dist[i.y]))
+      glm1 <- eval(glm1)
+      if(keepGLM) results$glm.ps[[i.y]] <- glm1
 
-      # collect PS statistics
       results$effects[[i.y]]$E.y0[2]  <- means.ps0[i.y]
       results$effects[[i.y]]$se.y0[2] <- sqrt(diag(vcov(means.ps0))[i.y])
-
-      y.hat0 <- predict(results$glm.ps[[i.y]], newdata=a, type="response", vcov=TRUE)
-      results$effects[[i.y]]$TE[2]    <- t(u) %*% y.hat0
-      results$effects[[i.y]]$se.TE[2] <- sqrt(t(u) %*% vcov(y.hat0) %*% u)
-      results$effects[[i.y]]$p[2]     <- coef(summary(results$glm.ps[[i.y]]))[2,4]
-
+      
+      y.hat0 <- predict(glm1, newdata=dataTwoRows01, type="response", vcov=TRUE)
+      results$effects[[i.y]]$TE[2]    <- t(c(-1,1)) %*% y.hat0
+      results$effects[[i.y]]$se.TE[2] <- sqrt(t(c(-1,1)) %*% vcov(y.hat0) %*% c(-1,1))
+      results$effects[[i.y]]$p[2]     <- coef(summary(glm1))[2,4]
+      
+      ### DR ###
+      nMissingOutcome <- sum(is.na(data0[[outcome.y[i.y]]]))
+      if(nMissingOutcome > 0)
+         warning("Outcome ",outcome.y[i.y]," has ",nMissingOutcome," missing values. They are included in the propensity score stage but dropped from the regression step")
+      
+      #    create intercept here... need control of it for prior penalty
+      data.mx <- model.matrix(formula(paste("~w+",outcome.y[i.y],"+",
+                                            as.character(t.form[[2]]),"+",
+                                            as.character(x.form[2]))),
+                              data=data0)
+      colnames(data.mx)[1] <- "Intercept"
+      
+      # put penalty on regression terms
+      if(smooth.lm>0)
+      {
+         a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = ncol(data.mx)-4))
+         data.mx <- rbind(data.mx, a)
+         if(y.dist[[i.y]]=="quasibinomial") # for log-F distribution need two rows
+         {
+            a[,3] <- 1 # set outcome to 1
+            data.mx <- rbind(data.mx, a)
+         }
+      }
+      
+      data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
+      sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
+      
+      dr.form <- formula(paste(outcome.y[i.y],"~-1+Intercept+",
+                               paste(names(data.mx)[-(1:3)],collapse="+")))
+      converged <- FALSE
+      while(!converged)
+      {
+         glm1 <- substitute(svyglm(formula = dr.form,
+                                   design  = sdesign.wexp,
+                                   family  = y.dist[i.y]))
+         glm1 <- eval(glm1)
+         converged <- all(!is.na(glm1$coefficients))
+         if(!converged)
+         {
+            to.drop <- names(glm1$coefficients[is.na(glm1$coefficients)])
+            to.drop <- setdiff(to.drop,as.character(t.form[[2]]))
+            if(all(to.drop==as.character(t.form[[2]])))
+            {
+               glm1 <- NA
+               converged <- TRUE
+            } else
+            {
+               cat("Dropping",to.drop,"\n")
+               dr.form <- update(dr.form,formula(paste(".~.",paste0("-",to.drop,collapse=""))))
+            }
+         }
+      }
+      
+      if(keepGLM) results$glm.dr[[i.y]] <- glm1
+      results$z[i.y] <- coef(summary(glm1))[2,"t value"]
+      if(FALSE) # transform from t to z for better FDR calculation
+      {
+       results$z[i.y] <- qnorm(pt(coef(summary(glm1))[2,"t value"],
+                                  glm1$df.residual))
+      }
+      
       # collect DR statistics
-      results$effects[[i.y]]$p[3]     <- coef(summary(results$glm.dr[[i.y]]))[2,4]
-
+      results$effects[[i.y]]$p[3] <- coef(summary(glm1))[2,4]
+      
       # only real treated cases, not those for shrinking beta
       a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
       n <- nrow(a)
       a <- rbind(a,a)
       a[1:n, as.character(t.form[2])] <- 0 # recode treated cases as control
-      y.hat0 <- predict(results$glm.dr[[i.y]],
+      y.hat0 <- predict(glm1,
                         newdata=a,
                         type="response")
       results$effects[[i.y]]$E.y0[3] <- mean(y.hat0[1:n])
       results$effects[[i.y]]$TE[3]   <- with(results$effects[[i.y]], E.y1[3]-E.y0[3])
-
-      if(sign(coef(results$glm.dr[[i.y]])[2]) != 
+      
+      if(sign(coef(glm1)[2]) != 
          sign(results$effects[[i.y]]$TE[3]))
       {
          warning("Outcome regression model treatment coefficient has a different sign than the estimated treatment effect. That is a little unusual and might need a closer look.")   
@@ -641,7 +629,7 @@ fastDR <- function(form.list,
       {
          u <- cbind(rep(1:0,each=n),         # for SE(EY0)
                     rep(c(-1,1),each=n))/n   # for SE(EY1-EY0)
-         y.hat0 <- predict(results$glm.dr[[i.y]], 
+         y.hat0 <- predict(glm1, 
                            newdata=a, 
                            type="response", 
                            vcov=TRUE)
@@ -656,7 +644,7 @@ fastDR <- function(form.list,
          a <- a[sample(1:nrow(a), size=n0),]
          a <- rbind(a,a)
          a[1:n0, as.character(t.form[2])] <- 0 # recode treated cases as control
-         y.hat0 <- predict(results$glm.dr[[i.y]], 
+         y.hat0 <- predict(glm1, 
                            newdata=a, 
                            type="response", 
                            vcov=TRUE)
@@ -681,8 +669,9 @@ fastDR <- function(form.list,
       results$effects[[i.y]]$se.y0[3] <- se.TE[1]
       results$effects[[i.y]]$se.TE[3] <- se.TE[2]
    }
+   if(verbose) cat("\nOutcome regression models complete\n")
+   ### END OUTCOME ANALYSIS ###
 
-### END TREATMENT CALCULATION ###
    results$y.dist <- y.dist
 
    class(results) <- "fastDR"
