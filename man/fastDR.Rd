@@ -70,10 +70,7 @@ score weights can be correctly aligned with cases by the user
 
 \code{fastDR} only estimates the average treatment effect on the treated.
 
-\code{fastDR} uses a generalized boosted model to estimate a propensity score
-model (McCaffrey, Ridgeway, and Morral, 2004). It uses those propensity scores
-as weights in a weighted generalized linear model to produce a doubly robust
-estimate of the treatment effect.
+\code{fastDR} uses a generalized boosted model to estimate a propensity score model (McCaffrey, Ridgeway, and Morral, 2004). It uses those propensity scores as weights in a weighted generalized linear model to produce a doubly robust estimate of the treatment effect.
 
 To reuse the propensity score weights in other analyses, make sure that the code aligns the right weight with the right case. Use the key in the data and the key attached to the weights. For example, \code{mydata$psw <- myfastDR$w[match(mydata$observationID,names(myfastDR$w))]}
 
@@ -94,7 +91,7 @@ When \code{smooth.lm} is greater than 0, \code{fastDR} uses a data augmentation 
 \item{p}{the estimated propensity scores. \code{p} also maintains the \code{key} in its names}
 \item{n1,ESS}{the number of cases in the treatment group and the effective sample size of the control group}
 \item{glm.un,glm.ps,glm.dr}{the generalized linear model fits using only sampling weights (\code{glm.un}), using propensity score weights (\code{glm.ps}), and the model producing doubly robust estimates (\code{glm.dr})}
-\item{effects}{a table showing the results. See the details section}
+\item{effects}{a table showing the results. \code{effects} includes results for an unadjusted (un), propensity score adjusted (ps), and doubly robust estimate (dr). For each, \code{effects} includes the estimates and standard errors for E(Y1|t=1), E(Y0|t=1), their difference, and p-value. These results are all on the scale of the response (not odds ratios or rate ratios)}
 \item{y.dist}{contains the value of \code{y.dist} used in the call to \code{fastDR}}
 \item{shrinkage}{the shrinkage parameter used in the propensity score model}
 
@@ -153,7 +150,7 @@ dr1 <- fastDR(list(y.form=~HI_CHOL,          # high cholesterol (over 240mg/dl)
 # show balance table
 round(dr1$balance.tab,3)
 
-# compute odds-ratio
+# compute percentage difference
 print(dr1, type="outcome", model="dr")
 
 }
