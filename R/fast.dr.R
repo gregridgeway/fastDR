@@ -8,6 +8,8 @@
    vers <- vers[grep("Version:",vers)]
    vers <- rev(strsplit(vers," ")[[1]])[1]
    packageStartupMessage(paste("Loaded fastDR",vers))
+   if(!("rescale" %in% names(formals(survey:::svyglm))))
+      packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. The R survey package normalizes the weights in a particular way that can cause numerical instability. fastDR() normalizes within the treatment and control groups so that the largest weight is 1. Run library(devtools);install_github("gregridgeway/survey","patch-1") to obtain a patched version of the survey package that avoids the weight rescaling.')
 }
 
 make.fastDR.formula <-
@@ -511,7 +513,8 @@ fastDR <- function(form.list,
       # must use "substitute" to inject arguments into svyglm, scoping issue
       glm1 <- substitute(svyglm(formula = ps.form, 
                                 design  = sdesign.un,
-                                family  = y.dist[i.y]))
+                                family  = y.dist[i.y],
+                                rescale = FALSE))
       glm1 <- eval(glm1)
       if(keepGLM) results$glm.un[[i.y]] <- glm1
 
@@ -532,7 +535,8 @@ fastDR <- function(form.list,
       ### propensity score ###
       glm1 <- substitute(svyglm(formula = ps.form,
                                 design  = sdesign.w,
-                                family  = y.dist[i.y]))
+                                family  = y.dist[i.y],
+                                rescale = FALSE))
       glm1 <- eval(glm1)
       if(keepGLM) results$glm.ps[[i.y]] <- glm1
 
@@ -578,7 +582,8 @@ fastDR <- function(form.list,
       {
          glm1 <- substitute(svyglm(formula = dr.form,
                                    design  = sdesign.wexp,
-                                   family  = y.dist[i.y]))
+                                   family  = y.dist[i.y],
+                                   rescale = FALSE))
          glm1 <- eval(glm1)
          converged <- all(!is.na(glm1$coefficients))
          if(!converged)
