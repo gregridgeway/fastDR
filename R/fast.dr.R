@@ -9,7 +9,7 @@
    vers <- rev(strsplit(vers," ")[[1]])[1]
    packageStartupMessage(paste("Loaded fastDR",vers))
    if(!("rescale" %in% names(formals(survey:::svyglm))))
-      packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. The R survey package normalizes the weights in a particular way that can cause numerical instability. fastDR() normalizes within the treatment and control groups so that the largest weight is 1. Run library(devtools);install_github("gregridgeway/survey","patch-1") to obtain a patched version of the survey package that avoids the weight rescaling.')
+      packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. The R survey package normalizes the weights in a particular way (normalizes across the whole dataset) that can cause numerical instability. fastDR() normalizes within the treatment and control groups so that the largest weight within each is 1. Run remotes::install_github("gregridgeway/fastDR") to obtain a patched version of the survey package that avoids the weight rescaling.')
 }
 
 make.fastDR.formula <-
