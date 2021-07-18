@@ -77,8 +77,8 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
          temp <- signif(temp,3)
          if(x$y.dist[i] %in% c("binomial","quasibinomial"))
          {
-            cat("percentage point difference (95% CI): ",temp[1],
-                " (",temp[2],",",temp[3],")\n",sep="")
+            cat("percentage point difference (95% CI): ",100*temp[1],
+                " (",100*temp[2],",",100*temp[3],")\n",sep="")
          }
          else if(x$y.dist[i] %in% c("poisson","quasipoisson"))
          {
