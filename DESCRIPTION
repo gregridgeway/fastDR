@@ -1,10 +1,10 @@
 Package: fastDR
-Version: 0.9-3
-Date: 2017-09-13
+Version: 1.0
+Date: 2021-07-18
 Title: Fast Doubly Robust Estimation
 Author: Greg Ridgeway <gridge@upenn.edu>
 Maintainer: Greg Ridgeway <gridge@upenn.edu>
-Depends: R (>= 3.0.0), gbm3, survey
+Depends: R (>= 3.0.0), gbm3, survey (>= 4.0)
 Imports: methods
 Description: This package uses generalized boosted models to compute
    non-parametric propensity score estimates and a propensity score
