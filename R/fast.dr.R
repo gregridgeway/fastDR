@@ -4,11 +4,17 @@
 
 .onAttach <- function(libname, pkgname)
 {
-   vers <- library(help=fastDR)$info[[1]]
-   vers <- vers[grep("Version:",vers)]
-   vers <- rev(strsplit(vers," ")[[1]])[1]
-   packageStartupMessage(paste("Loaded fastDR",vers))
-   packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. survey 4.0 has a bug when rescale=FALSE that does not copy the weights into the dataset. Run remotes::install_github("gregridgeway/survey","patch-2") to obtain a patched version of the survey package that corrects this.')
+   packageStartupMessage(paste("Loaded fastDR",
+                               installed.packages()["fastDR","Version"]))
+   
+   # check correct survey package patch
+   if(!grepl("patch-2",
+             grep("RemoteRef|GithubRef",
+                  library(help=survey)$info[[1]],
+                  value=TRUE)[1]))
+   {
+      packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. survey 4.0 has a bug when rescale=FALSE that does not copy the weights into the dataset. Run remotes::install_github("gregridgeway/survey","patch-2") to obtain a patched version of the survey package that corrects this.')
+   }
 }
 
 make.fastDR.formula <-
