@@ -5,15 +5,12 @@
 .onAttach <- function(libname, pkgname)
 {
    packageStartupMessage(paste("Loaded fastDR",
-                               installed.packages()["fastDR","Version"]))
+                               utils::packageDescription("fastDR")$Version))
    
-   # check correct survey package patch
-   if(!grepl("patch-2",
-             grep("RemoteRef|GithubRef",
-                  library(help=survey)$info[[1]],
-                  value=TRUE)[1]))
+   # double check survey package version... critical
+   if(utils::packageDescription("survey")$Version < "4.1")
    {
-      packageStartupMessage('WARNING: fastDR requires a modified version of the survey package. survey 4.0 has a bug when rescale=FALSE that does not copy the weights into the dataset. Run remotes::install_github("gregridgeway/survey","patch-2") to obtain a patched version of the survey package that corrects this.')
+      packageStartupMessage('WARNING: fastDR requires version 4.1 or later of the survey package. Earlier versions of the survey package did not have a rescale=FALSE option or had a bug when rescale=FALSE that did not copy the weights into the dataset. install.packages("survey") to obtain the latest version.')
    }
 }
 
@@ -566,6 +563,12 @@ fastDR <- function(form.list,
       colnames(data.mx)[1] <- "Intercept"
       
       # put penalty on regression terms
+      # S. Greenland M.A.  Mansournia (2015). "Penalization, bias reduction, and 
+      # default priors in logistic and related categorical and survival 
+      # regressions. Statistics in Medicine 34:3133–3143. 10.1002/sim.6537.
+      
+      # S. Greenland, M.A. Mansournia, D.G. Altman (2016). "Sparse data bias: a 
+      # problem hiding in plain sight," BMJ 352:i1981 10.1136/bmj.i1981.
       if(smooth.lm>0)
       {
          a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = ncol(data.mx)-4))
