@@ -452,7 +452,14 @@ fastDR <- function(form.list,
          converged <- TRUE
          warning("Best iteration is 0 in propensity score model. Might signal a problem with the data")
       }
-      shrinkage <- shrinkage*results$best.iter/(n.trees*0.75)
+      if(shrinkage*results$best.iter/(n.trees*0.75) > 1)
+      {
+         converged <- TRUE
+         warning("Projected shrinkage would exceed 1.0 if we keep going. This is probably the best propensity score model gbm can produce.")
+      } else
+      {
+         shrinkage <- shrinkage*results$best.iter/(n.trees*0.75)
+      }
    }
 
    i.cntrl <- with(data0, which(eval(subsetExpr0)))
