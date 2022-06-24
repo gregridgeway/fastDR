@@ -146,7 +146,8 @@ fastDR <- function(form.list,
                    verbose=FALSE,
                    ps.only=FALSE,
                    keepGLM=TRUE,
-                   smooth.lm=0)
+                   smooth.lm=0,
+                   par_details=gbmParallel(1,1024))
 {
    y.form       <- form.list$y.form
    if(is.null(y.form))
@@ -368,7 +369,8 @@ fastDR <- function(form.list,
                                       num_train=nrow(data0),
                                       num_features=length(match.vars)),
                    is_verbose=verbose,
-                   keep_gbm_data=FALSE)
+                   keep_gbm_data=FALSE,
+                   par_details=par_details)
 
       iters <- c(0,seq(trunc(n.trees*0.3),n.trees,length=11))
       p <- predict(gbm1,newdata=data0,n.trees=iters,type="response")

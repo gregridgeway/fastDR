@@ -12,7 +12,8 @@ fastDR(form.list,
        verbose=FALSE,
        ps.only=FALSE,
        keepGLM=TRUE,
-       smooth.lm=0)
+       smooth.lm=0,
+       par_details=gbmParallel(1,1024))
 }
 
 \arguments{
@@ -48,6 +49,8 @@ indicators}
 \item{keepGLM}{if TRUE, keep a copy of the \code{glm} objects produced in the outcome model step. These models can become large with multiple outcomes and large datasets}
 
 \item{smooth.lm}{a numeric value for penalizing the size of the covariates in the DR step}
+
+\item{par_details}{a list containing the number of threads and array_chunk_size to be passed to \code{gbmt} for running several gbm computations in parallel (e.g. gradient calculation, split selection). Most easily set using \code{gbmParallel}}
 
 }
 
@@ -123,7 +126,7 @@ S. Greenland, M.A. Mansournia, and D.G. Altman (2014). \dQuote{Sparse data bias:
 
 \author{Greg Ridgeway \email{gridge@upenn.edu}}
 
-\seealso{ \code{\link{gbm}} }
+\seealso{ \code{\link{gbmt}}, \code{\link{gbmParallel}} }
 
 \examples{
 # NHANES example from survey package
@@ -150,7 +153,8 @@ dr1 <- fastDR(list(y.form=~HI_CHOL,          # high cholesterol (over 240mg/dl)
               interaction.depth=3,
               shrinkage=0.005,
               verbose=TRUE,             # print out detailed progress
-              smooth.lm=0.1)            # stabilize regression coefs
+              smooth.lm=0.1,            # stabilize regression coefs
+              par_details=gbmParallel(1,1024)) # just use one core
 
 # show balance table
 round(dr1$balance.tab,3)
