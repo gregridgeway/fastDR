@@ -384,9 +384,14 @@ fastDR <- function(form.list,
          i.cntrl <- with(data0, eval(subsetExpr0))
          i.treat <- with(data0, eval(subsetExpr1))
          data0$w[i.cntrl] <- p[i.cntrl,j]/(1-p[i.cntrl,j])
-         data0$w <- with(data0, samp.w*w) # weights should be sampling weight*PSW
+         
+         # weights should be sampling weight*PSW
+         # G. Ridgeway, S. Kovalchik, B.A. Griffin, and M.U. Kabeto (2015). 
+         #   "Propensity score analysis with survey weighted data,” Journal of 
+         #   Causal Inference 3(2):237-249
+         data0$w <- with(data0, samp.w*w) 
 
-         # normalize the weights to have mean 1.0 within treatment
+         # normalize the weights to be max 1.0 within treatment group
          data0$w[i.treat] <- data0$w[i.treat]/max(data0$w[i.treat])
          data0$w[i.cntrl] <- data0$w[i.cntrl]/max(data0$w[i.cntrl])
 
@@ -490,17 +495,20 @@ fastDR <- function(form.list,
 
    # make sure data0 has the best prop score weights
    data0$w <- results$w
+   data0$samp.w[i.cntrl] <- data0$samp.w[i.cntrl]/max(data0$samp.w[i.cntrl])
+   data0$samp.w[i.treat] <- data0$samp.w[i.treat]/max(data0$samp.w[i.treat])
    sdesign.un <- svydesign(ids=~1, weights=~samp.w, data=data0)
    sdesign.w  <- svydesign(ids=~1, weights=~w,      data=data0)
-   means.un1 <- svymean(y.form,
-                        design=subset(sdesign.un, eval(subsetExpr1)),
-                        na.rm=TRUE)
-   means.un0 <- svymean(y.form, 
-                        design=subset(sdesign.un, eval(subsetExpr0)),
-                        na.rm=TRUE)
-   means.ps0 <- svymean(y.form,
-                        design=subset(sdesign.w, eval(subsetExpr0)),
-                        na.rm=TRUE)
+   # this produces incorrect estimates with multiple outcomes with missing values
+   # means.un1 <- svymean(y.form,
+   #                      design=subset(sdesign.un, eval(subsetExpr1)),
+   #                      na.rm=TRUE)
+   # means.un0 <- svymean(y.form, 
+   #                      design=subset(sdesign.un, eval(subsetExpr0)),
+   #                      na.rm=TRUE)
+   # means.ps0 <- svymean(y.form,
+   #                      design=subset(sdesign.w, eval(subsetExpr0)),
+   #                      na.rm=TRUE)
    
    # for storing the results
    results$effects <- vector("list",length(outcome.y))
@@ -528,19 +536,26 @@ fastDR <- function(form.list,
                                 rescale = FALSE))
       glm1 <- eval(glm1)
       if(keepGLM) results$glm.un[[i.y]] <- glm1
-
-      results$effects[[i.y]]$E.y1[]   <- means.un1[i.y]
-      results$effects[[i.y]]$E.y0[1]  <- means.un0[i.y]
-      results$effects[[i.y]]$se.y1[]  <- sqrt(diag(vcov(means.un1))[i.y])
-      results$effects[[i.y]]$se.y0[1] <- sqrt(diag(vcov(means.un0))[i.y])
+      
+      a <- svymean(reformulate(attr(terms(y.form), "term.labels")[i.y]),
+                   design=subset(sdesign.un, eval(subsetExpr1)),
+                   na.rm=TRUE)
+      results$effects[[i.y]]$E.y1[]   <- as.numeric(a)
+      results$effects[[i.y]]$se.y1[]  <- sqrt(vcov(a))
+      
+      a <- svymean(reformulate(attr(terms(y.form), "term.labels")[i.y]),
+                   design=subset(sdesign.un, eval(subsetExpr0)),
+                   na.rm=TRUE)
+      results$effects[[i.y]]$E.y0[1]  <- as.numeric(a)
+      results$effects[[i.y]]$se.y0[1] <- sqrt(vcov(a))
 
       # grab a generic treatment row and control row
       dataTwoRows01 <- rbind(subset(data0, eval(subsetExpr0))[1,],
                              subset(data0, eval(subsetExpr1))[1,])
       y.hat0 <- predict(glm1, newdata=dataTwoRows01, type="response", vcov=TRUE)
       
-      results$effects[[i.y]]$TE[1]    <- t(c(-1,1)) %*% y.hat0
-      results$effects[[i.y]]$se.TE[1] <- sqrt(t(c(-1,1)) %*% vcov(y.hat0) %*% c(-1,1))
+      results$effects[[i.y]]$TE[1]    <- as.numeric(t(c(-1,1)) %*% y.hat0)
+      results$effects[[i.y]]$se.TE[1] <- as.numeric(sqrt(t(c(-1,1)) %*% vcov(y.hat0) %*% c(-1,1)))
       results$effects[[i.y]]$p[1]     <- coef(summary(glm1))[2,4]
        
       ### propensity score ###
@@ -551,8 +566,11 @@ fastDR <- function(form.list,
       glm1 <- eval(glm1)
       if(keepGLM) results$glm.ps[[i.y]] <- glm1
 
-      results$effects[[i.y]]$E.y0[2]  <- means.ps0[i.y]
-      results$effects[[i.y]]$se.y0[2] <- sqrt(diag(vcov(means.ps0))[i.y])
+      a <- svymean(reformulate(attr(terms(y.form), "term.labels")[i.y]),
+                   design=subset(sdesign.w, eval(subsetExpr0)),
+                   na.rm=TRUE)
+      results$effects[[i.y]]$E.y0[2]  <- as.numeric(a)
+      results$effects[[i.y]]$se.y0[2] <- sqrt(vcov(a))
       
       y.hat0 <- predict(glm1, newdata=dataTwoRows01, type="response", vcov=TRUE)
       results$effects[[i.y]]$TE[2]    <- t(c(-1,1)) %*% y.hat0
