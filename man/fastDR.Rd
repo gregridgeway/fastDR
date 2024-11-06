@@ -6,6 +6,7 @@
 fastDR(form.list,
        data,
        y.dist="gaussian",
+       estimand="ATT",
        n.trees=3000,
        interaction.depth=3,
        shrinkage=0.01,
@@ -29,6 +30,9 @@ since the model uses non-integer propensity score weights. \dQuote{quasibinomial
 avoids this. If \code{y.form} has multiple outcomes than \code{y.dist} should
 be a vector of strings the same length as the number of outcomes in
 \code{y.dist}}
+
+\item{estimand}{either "ATT" (default) for the average treatment effect or
+"ATE" for the average treatment effect}
 
 \item{n.trees}{the total number of trees to fit for the generalized boosted
 model. This is equivalent to the number of iterations and the number of basis
@@ -79,6 +83,8 @@ score weights can be correctly aligned with cases by the user
 \code{fastDR} uses a generalized boosted model to estimate a propensity score model (McCaffrey, Ridgeway, and Morral, 2004). It uses those propensity scores as weights in a weighted generalized linear model to produce a doubly robust estimate of the treatment effect.
 
 To reuse the propensity score weights in other analyses, make sure that the code aligns the right weight with the right case. Use the key in the data and the key attached to the weights. For example, \code{mydata$psw <- myfastDR$w[match(mydata$observationID,names(myfastDR$w))]}
+
+For ATT, treated cases receive weight equal to 1 and comparison cases receive weight p/(1-p). For ATE, treated cases receive weight equal to 1/p and comparison cases receive weight 1/(1-p)
 
 The effective sample size is the number of independent cases that would yield the same precision as the given weighted sample. It is computed as
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}

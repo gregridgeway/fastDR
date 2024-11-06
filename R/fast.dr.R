@@ -71,6 +71,7 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
          cat("Propensity score weighting results\n")
       else if(model=="dr")
          cat("Doubly robust results\n")
+      cat("Estimand: ", x$estimand, "\n")
       for(i in 1:length(x$effects))
       {
          cat(names(x$effects)[i],":\n",sep="")
@@ -114,6 +115,7 @@ summary.fastDR <- function(object, ... )
    } else
    {
       cat("Results\n")
+      cat("Estimand: ", object$estimand, "\n")
       print(object$effects)
    }
 
@@ -140,6 +142,7 @@ ks <- function(x,z,w)
 fastDR <- function(form.list,
                    data,
                    y.dist="gaussian",
+                   estimand="ATT",
                    n.trees=3000,
                    interaction.depth=3,
                    shrinkage=0.01,
@@ -205,6 +208,11 @@ fastDR <- function(form.list,
       warning("Using 'quasipoisson' instead of 'poisson'")
    }
    
+   if(!(estimand %in% c("ATT","ATE")))
+   {
+      stop("estimand must either be 'ATT' or 'ATE'")
+   }
+   
    if(n.trees<14)
    {
       n.trees <- 14
@@ -247,6 +255,8 @@ fastDR <- function(form.list,
    data0 <- cbind(model.frame(y.form, data, na.action=na.pass),
                   model.frame(t.form, data, na.action=na.pass),
                   model.frame(x.form, data, na.action=na.pass))
+   
+   cat("data0 dims:", dim(data0))
 
    # get treatment indicator and check that they are all 0/1
    i.treat <- model.frame(t.form,data, na.action=na.pass)[,1]
@@ -268,6 +278,7 @@ fastDR <- function(form.list,
    {
       if(is(weights.form)[1]!="formula")
          stop("weights parameter should be a formula of the form ~weight, where 'weight' is the variable in data containing the observation weights")
+      warning("SEs for DR estimates with sample weighted data might not completely account for sampling weights")
       data0$samp.w <- model.frame(weights.form,data)[,1]
    }
    if(any(is.na(data0$samp.w)))
@@ -380,10 +391,17 @@ fastDR <- function(form.list,
       best.bal <- 1
       for(j in 1:ncol(p))
       {
-         data0$w <- 1
          i.cntrl <- with(data0, eval(subsetExpr0))
          i.treat <- with(data0, eval(subsetExpr1))
-         data0$w[i.cntrl] <- p[i.cntrl,j]/(1-p[i.cntrl,j])
+         data0$w <- 1
+         if(estimand=="ATT")
+         {
+            data0$w[i.cntrl] <- p[i.cntrl,j]/(1-p[i.cntrl,j])
+         } else # estimand=="ATE"
+         {
+            data0$w[i.treat] <- 1/p[i.treat,j]
+            data0$w[i.cntrl] <- 1/(1-p[i.cntrl,j])
+         }
          
          # weights should be sampling weight*PSW
          # G. Ridgeway, S. Kovalchik, B.A. Griffin, and M.U. Kabeto (2015). 
@@ -499,17 +517,7 @@ fastDR <- function(form.list,
    data0$samp.w[i.treat] <- data0$samp.w[i.treat]/max(data0$samp.w[i.treat])
    sdesign.un <- svydesign(ids=~1, weights=~samp.w, data=data0)
    sdesign.w  <- svydesign(ids=~1, weights=~w,      data=data0)
-   # this produces incorrect estimates with multiple outcomes with missing values
-   # means.un1 <- svymean(y.form,
-   #                      design=subset(sdesign.un, eval(subsetExpr1)),
-   #                      na.rm=TRUE)
-   # means.un0 <- svymean(y.form, 
-   #                      design=subset(sdesign.un, eval(subsetExpr0)),
-   #                      na.rm=TRUE)
-   # means.ps0 <- svymean(y.form,
-   #                      design=subset(sdesign.w, eval(subsetExpr0)),
-   #                      na.rm=TRUE)
-   
+
    # for storing the results
    results$effects <- vector("list",length(outcome.y))
    names(results$effects) <- attr(terms(y.form),"term.labels")
@@ -571,6 +579,14 @@ fastDR <- function(form.list,
                    na.rm=TRUE)
       results$effects[[i.y]]$E.y0[2]  <- as.numeric(a)
       results$effects[[i.y]]$se.y0[2] <- sqrt(vcov(a))
+      if(estimand=="ATE")
+      {
+         a <- svymean(reformulate(attr(terms(y.form), "term.labels")[i.y]),
+                      design=subset(sdesign.w, eval(subsetExpr1)),
+                      na.rm=TRUE)
+         results$effects[[i.y]]$E.y1[2]  <- as.numeric(a)
+         results$effects[[i.y]]$se.y1[2] <- sqrt(vcov(a))
+      }
       
       y.hat0 <- predict(glm1, newdata=dataTwoRows01, type="response", vcov=TRUE)
       results$effects[[i.y]]$TE[2]    <- t(c(-1,1)) %*% y.hat0
@@ -648,15 +664,29 @@ fastDR <- function(form.list,
       # collect DR statistics
       results$effects[[i.y]]$p[3] <- coef(summary(glm1))[2,4]
       
-      # only real treated cases, not those for shrinking beta
-      a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
-      n <- nrow(a)
-      a <- rbind(a,a)
-      a[1:n, as.character(t.form[2])] <- 0 # recode treated cases as control
+      # only real cases, not those for shrinking beta
+      if(estimand=="ATT")
+      {
+         a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
+         n <- nrow(a)
+         a <- rbind(a,a)
+         a[1:n, as.character(t.form[2])] <- 0 # recode treated cases as control
+      } else # estimand=="ATE"
+      {
+         a <- subset(data.mx, Intercept==1)
+         n <- nrow(a)
+         a <- rbind(a,a)
+         a[1:n, as.character(t.form[2])] <- 0 # recode all cases as control
+         a[(n+1):(2*n), as.character(t.form[2])] <- 1 # recode all cases as treated
+      }
       y.hat0 <- predict(glm1,
                         newdata=a,
                         type="response")
       results$effects[[i.y]]$E.y0[3] <- mean(y.hat0[1:n])
+      if(estimand=="ATE")
+      {
+         results$effects[[i.y]]$E.y1[3] <- mean(y.hat0[(n+1):(2*n)])
+      }
       results$effects[[i.y]]$TE[3]   <- with(results$effects[[i.y]], E.y1[3]-E.y0[3])
       
       if(sign(coef(glm1)[2]) != 
@@ -665,9 +695,11 @@ fastDR <- function(form.list,
          warning("Outcome regression model treatment coefficient has a different sign than the estimated treatment effect. That is a little unusual and might need a closer look.")   
       }
       
-      if(nrow(a)<=3000)
+      if(nrow(a)<=5000)
       {
+         cat("Exact SE calculation\n")
          u <- cbind(rep(1:0,each=n),         # for SE(EY0)
+                    rep(0:1,each=n),         # for SE(EY1)
                     rep(c(-1,1),each=n))/n   # for SE(EY1-EY0)
          y.hat0 <- predict(glm1, 
                            newdata=a, 
@@ -677,13 +709,24 @@ fastDR <- function(form.list,
       } else
       {
          VdiagE0 <- sum(vcov(y.hat0)[1:n]) # vcov will return a vector here
+         VdiagE1 <- sum(vcov(y.hat0)[(n+1):(2*n)])
          VdiagTE <- sum(vcov(y.hat0))
          
          n0 <- 1500
-         a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
-         a <- a[sample(1:nrow(a), size=n0),]
-         a <- rbind(a,a)
-         a[1:n0, as.character(t.form[2])] <- 0 # recode treated cases as control
+         if(estimand=="ATT")
+         {
+            a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
+            a <- a[sample(1:nrow(a), size=n0),]
+            a <- rbind(a,a)
+            a[1:n0, as.character(t.form[2])] <- 0 # recode treated cases as control
+         } else # estimand=="ATE"
+         {
+            a <- subset(data.mx, Intercept==1)
+            a <- a[sample(1:nrow(a), size=n0),]
+            a[, as.character(t.form[2])] <- 1 # recode all cases as treated
+            a <- rbind(a,a)
+            a[1:n0, as.character(t.form[2])] <- 0 # recode all cases as control
+         }
          y.hat0 <- predict(glm1, 
                            newdata=a, 
                            type="response", 
@@ -694,8 +737,13 @@ fastDR <- function(form.list,
          VoffdiagE0 <- sum(V)-sum(diag(V))
          VoffdiagE0 <- n*(n-1)*VoffdiagE0/(n0*(n0-1))
          VEY0 <- VdiagE0 + VoffdiagE0
+         # se(EY1)
+         V <- vcov(y.hat0)[(n0+1):(2*n0), (n0+1):(2*n0)]
+         VoffdiagE1 <- sum(V)-sum(diag(V))
+         VoffdiagE1 <- n*(n-1)*VoffdiagE1/(n0*(n0-1))
+         VEY1 <- VdiagE1 + VoffdiagE1
          
-         # se(ET1-EY0)
+         # se(EY1-EY0)
          # for the difference variance is
          #   mean(V[1:n,1:n])-2*mean(V[1:n,-(1:n)])+mean(V[-(1:n),-(1:n)])
          V <- vcov(y.hat0)
@@ -704,15 +752,17 @@ fastDR <- function(form.list,
                 sum(V[-(1:n0),-(1:n0)]) -
                 sum(diag(V)) -
                 2*sum(V[1:n0,-(1:n0)])) / (n0*(n0-1))
-         se.TE <- sqrt(c(VEY0, VTE))/n
+         se.TE <- sqrt(c(VEY0, VEY1, VTE))/n
       }
       results$effects[[i.y]]$se.y0[3] <- se.TE[1]
-      results$effects[[i.y]]$se.TE[3] <- se.TE[2]
+      results$effects[[i.y]]$se.y1[3] <- se.TE[2]
+      results$effects[[i.y]]$se.TE[3] <- se.TE[3]
    }
    if(verbose) cat("\nOutcome regression models complete\n")
    ### END OUTCOME ANALYSIS ###
 
    results$y.dist <- y.dist
+   results$estimand <- estimand
 
    class(results) <- "fastDR"
    return(results)
