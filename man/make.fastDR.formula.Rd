@@ -5,7 +5,7 @@
 Make formulas appropriate for using in fastDR
 }
 \description{
-\code{make.fastDR.formula} is a function that helps the user write appropriate formulas for use in fastDR. Since
+\code{make.fastDR.formula} helps the user write appropriate formulas for use in \code{\link{fastDR}}.
 }
 \usage{
 make.fastDR.formula(y.vars,
@@ -57,5 +57,4 @@ my.forms <- make.fastDR.formula(y.vars=c("HI_CHOL","Y2"),
 
 }
 
-\keyword{ models }
-\keyword{ ~kwd2 }% __ONLY ONE__ keyword per line
+\keyword{models}

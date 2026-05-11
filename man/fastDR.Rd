@@ -84,7 +84,7 @@ score weights can be correctly aligned with cases by the user
 
 To reuse the propensity score weights in other analyses, make sure that the code aligns the right weight with the right case. Use the key in the data and the key attached to the weights. For example, \code{mydata$psw <- myfastDR$w[match(mydata$observationID,names(myfastDR$w))]}
 
-For ATT, treated cases receive weight equal to 1 and comparison cases receive weight p/(1-p). For ATE, treated cases receive weight equal to 1/p and comparison cases receive weight 1/(1-p)
+For ATT, treated cases receive weight equal to 1 and comparison cases receive weight p/(1-p). For ATE, treated cases receive weight equal to 1/p and comparison cases receive weight 1/(1-p).
 
 The effective sample size is the number of independent cases that would yield the same precision as the given weighted sample. It is computed as
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
@@ -125,19 +125,20 @@ S. Greenland and M.A. Mansournia (2015). \dQuote{Penalization, bias reduction, a
 
 S. Greenland, M.A. Mansournia, and D.G. Altman (2014). \dQuote{Sparse data bias: a problem hiding in plain sight,} \emph{The BMJ} 353:i1981.
 
-\url{http://sites.google.com/site/gregridgeway}
+\url{https://gregridgeway.github.io/}
 
 }
 
 
 \author{Greg Ridgeway \email{gridge@upenn.edu}}
 
-\seealso{ \code{\link{gbmt}}, \code{\link{gbmParallel}} }
+\seealso{ \code{\link[gbm3]{gbmt}}, \code{\link[gbm3]{gbmParallel}} }
 
 \examples{
 # NHANES example from survey package
 
 data(nhanes)
+nhanes <- nhanes[seq_len(300),]
 # add a unique ID to each row
 nhanes$observationID <- 1:nrow(nhanes)
 # recode the "treatment" (male) to a 0/1 indicator
@@ -155,10 +156,10 @@ dr1 <- fastDR(list(y.form=~HI_CHOL,          # high cholesterol (over 240mg/dl)
                    key.form=~observationID),
               data=nhanes,
               y.dist="quasibinomial",   # outcome is 0/1
-              n.trees=1000,
-              interaction.depth=3,
-              shrinkage=0.005,
-              verbose=TRUE,             # print out detailed progress
+              n.trees=14,
+              interaction.depth=1,
+              shrinkage=0.01,
+              verbose=FALSE,
               smooth.lm=0.1,            # stabilize regression coefs
               par_details=gbmParallel(1,1024)) # just use one core
 
