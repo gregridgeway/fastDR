@@ -1,14 +1,16 @@
 Package: fastDR
-Version: 1.0-1
-Date: 2021-07-18
+Version: 1.1-0
+Date: 2026-05-11
 Title: Fast Doubly Robust Estimation
-Author: Greg Ridgeway <gridge@upenn.edu>
-Maintainer: Greg Ridgeway <gridge@upenn.edu>
+Authors@R: person(given = "Greg",
+                  family = "Ridgeway",
+                  role = c("aut", "cre"),
+                  email = "gridge@upenn.edu")
 Depends: R (>= 4.0.0), gbm3, survey (>= 4.1)
 Imports: methods
-Description: This package uses generalized boosted models to compute
+Description: Uses generalized boosted models to compute
    non-parametric propensity score estimates and a propensity score
    weighted outcome regression model to compute doubly robust estimates
    of treatment effects.
 License: GPL-2 | file LICENSE
-URL: http://sites.google.com/site/gregridgeway
+URL: https://github.com/gregridgeway/fastDR
