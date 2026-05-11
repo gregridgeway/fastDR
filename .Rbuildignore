@@ -1,2 +1,11 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.Rhistory$
+^\.gitignore$
+^man/\.gitignore$
+^\.github$
+^fastDR_.*\.tar\.gz$
+^fastDR\.Rcheck$
+^\.\.Rcheck$
+^\.positai$
+^\.claude$
