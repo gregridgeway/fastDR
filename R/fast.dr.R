@@ -1,7 +1,6 @@
 # Notes:
 #   - fix treatment cases weighted with sampling weights
 
-
 .onAttach <- function(libname, pkgname)
 {
    packageStartupMessage(paste("Loaded fastDR",
@@ -28,29 +27,27 @@ make.fastDR.formula <-
          warning("Not all y.vars appear in data")
       if(!(t.var %in% names(data)))
          warning("t.var does not appear in data")
-      if(!(weights.var %in% names(data)))
+      if(!is.null(weights.var) && !(weights.var %in% names(data)))
          warning("weights.var does not appear in data")
       if(!(key.var %in% names(data)))
          warning("key.var does not appear in data")
-      if(!(key.var %in% names(data)))
-         warning("key.var does not appear in data")
-      if(x.vars==".")
+      if(identical(x.vars, "."))
          x.vars <- setdiff(names(data),c(y.vars,t.var,weights.var,key.var))
    }
-   if(is.null(data) && (x.vars="."))
+   if(is.null(data) && identical(x.vars, "."))
       stop("If x.vars given as '.' then data must be given")
 
    return(list(
-      y.form      =paste("~",paste(y.vars,collapse="+"),sep=""),
-      t.form      =paste("~",t.var,sep=""),
-      x.form      =paste("~",paste(x.vars,collapse="+"),sep=""),
-      weights.form=paste("~",weights.var,sep=""),
-      key.form    =paste("~",key.var,sep="")))
+      y.form      =formula(paste("~",paste(y.vars,collapse="+"),sep="")),
+      t.form      =formula(paste("~",t.var,sep="")),
+      x.form      =formula(paste("~",paste(x.vars,collapse="+"),sep="")),
+      weights.form=if(is.null(weights.var)) NULL else formula(paste("~",weights.var,sep="")),
+      key.form    =formula(paste("~",key.var,sep=""))))
 }
 
 print.fastDR <- function(x, type="outcome", model="dr",... )
 {
-   if(class(x)!="fastDR")
+   if(!inherits(x, "fastDR"))
    {
       stop("object must be a fastDR object, typically produced from a call to fastDR")
    }
@@ -104,7 +101,7 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
 
 summary.fastDR <- function(object, ... )
 {
-   if(class(object)!="fastDR")
+   if(!inherits(object, "fastDR"))
    {
       stop("object must be a fastDR object, typically produced from a call to fastDR")
    }
@@ -256,8 +253,6 @@ fastDR <- function(form.list,
                   model.frame(t.form, data, na.action=na.pass),
                   model.frame(x.form, data, na.action=na.pass))
    
-   cat("data0 dims:", dim(data0))
-
    # get treatment indicator and check that they are all 0/1
    i.treat <- model.frame(t.form,data, na.action=na.pass)[,1]
    if(!all(i.treat %in% 0:1))
@@ -383,7 +378,9 @@ fastDR <- function(form.list,
                    keep_gbm_data=FALSE,
                    par_details=par_details)
 
-      iters <- c(0,seq(trunc(n.trees*0.3),n.trees,length=11))
+      iters <- unique(c(0, as.integer(round(seq(trunc(n.trees*0.3),
+                                                n.trees,
+                                                length.out=11)))))
       p <- predict(gbm1,newdata=data0,n.trees=iters,type="response")
 
       if(verbose)
@@ -405,7 +402,7 @@ fastDR <- function(form.list,
          
          # weights should be sampling weight*PSW
          # G. Ridgeway, S. Kovalchik, B.A. Griffin, and M.U. Kabeto (2015). 
-         #   "Propensity score analysis with survey weighted data,” Journal of 
+         #   "Propensity score analysis with survey weighted data," Journal of
          #   Causal Inference 3(2):237-249
          data0$w <- with(data0, samp.w*w) 
 
@@ -608,7 +605,7 @@ fastDR <- function(form.list,
       # put penalty on regression terms
       # S. Greenland M.A.  Mansournia (2015). "Penalization, bias reduction, and 
       # default priors in logistic and related categorical and survival 
-      # regressions. Statistics in Medicine 34:3133–3143. 10.1002/sim.6537.
+      # regressions. Statistics in Medicine 34:3133-3143. 10.1002/sim.6537.
       
       # S. Greenland, M.A. Mansournia, D.G. Altman (2016). "Sparse data bias: a 
       # problem hiding in plain sight," BMJ 352:i1981 10.1136/bmj.i1981.
@@ -625,6 +622,8 @@ fastDR <- function(form.list,
       
       data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
       sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
+      # Static check hint; subset() evaluates Intercept from data.mx.
+      Intercept <- NULL
       
       dr.form <- formula(paste(outcome.y[i.y],"~-1+Intercept+",
                                paste(names(data.mx)[-(1:3)],collapse="+")))
@@ -697,7 +696,7 @@ fastDR <- function(form.list,
       
       if(nrow(a)<=5000)
       {
-         cat("Exact SE calculation\n")
+         if(verbose) cat("Exact SE calculation\n")
          u <- cbind(rep(1:0,each=n),         # for SE(EY0)
                     rep(0:1,each=n),         # for SE(EY1)
                     rep(c(-1,1),each=n))/n   # for SE(EY1-EY0)
