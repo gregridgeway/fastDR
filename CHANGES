@@ -1,2 +1,15 @@
+Changes in version 1.1-0
+- Updated package metadata for CRAN, including Authors@R, current Date,
+  package URL, and DESCRIPTION wording
+- Added an R-hub v2 GitHub Actions workflow
+- Added build ignores for local development files, GitHub Actions workflows,
+  source tarballs, and check directories
+- Fixed make.fastDR.formula() handling of x.vars="." and missing
+  weights.var
+- Removed unconditional progress output from fastDR()
+- Updated propensity score prediction iterations to pass integer tree counts
+  to gbm3
+- Cleaned documentation cross-references, examples, and stale Rd content
+
 Changes in version 0.9
 - Created the package merging in existing test code and creating help files
