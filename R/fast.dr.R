@@ -1,6 +1,14 @@
 # Notes:
 #   - fix treatment cases weighted with sampling weights
 
+#' @importFrom gbm3 gbm_dist gbmParallel gbmt training_params
+#' @importFrom methods is
+#' @importFrom stats coef cor delete.response formula median model.frame
+#'   model.matrix na.pass predict reformulate terms update vcov
+#'   weighted.mean
+#' @importFrom survey svydesign svyglm svymean
+"_PACKAGE"
+
 .onAttach <- function(libname, pkgname)
 {
    packageStartupMessage(paste("Loaded fastDR",
@@ -13,6 +21,55 @@
    }
 }
 
+#' Make formulas appropriate for using in fastDR
+#'
+#' `make.fastDR.formula()` helps the user write appropriate formulas for use in
+#' [fastDR()].
+#'
+#' @param y.vars A vector of strings indicating the names of the outcome
+#'   variables, for example `c("y1", "y2")`.
+#' @param t.var A string giving the name of the treatment variable, for example
+#'   `"treat"`.
+#' @param x.vars A vector of strings giving the names of the covariates, for
+#'   example `c("X1", "X2")`. `x.vars` may also take the value `"."`, which
+#'   will select all variables in `data` not otherwise given in the other
+#'   components.
+#' @param weights.var A string giving the name of the observation weights, for
+#'   example `"samp.weights"`.
+#' @param key.var A string giving the name of the variable containing the
+#'   observation IDs, for example `"caseID"`.
+#' @param data A data frame that will be sent to [fastDR()].
+#'
+#' @return A list with appropriately formatted R formulas ready to be submitted
+#'   to [fastDR()].
+#'
+#' @author Greg Ridgeway \email{gridge@upenn.edu}
+#' @seealso [fastDR()]
+#'
+#' @examples
+#' # NHANES example from survey package
+#' data(nhanes)
+#'
+#' # add a unique ID to each row
+#' nhanes$observationID <- 1:nrow(nhanes)
+#' # recode the "treatment" (male) to a 0/1 indicator
+#' nhanes$male <- as.numeric(nhanes$RIAGENDR == 1)
+#' # create a second random outcome
+#' nhanes$Y2 <- rnorm(nrow(nhanes), 0, 1)
+#' # drop unused variables
+#' j <- which((names(nhanes) == "SDMVPSU") |
+#'            (names(nhanes) == "SDMVSTRA"))
+#' nhanes <- nhanes[, -j]
+#'
+#' my.forms <- make.fastDR.formula(y.vars = c("HI_CHOL", "Y2"),
+#'                                 t.var = "male",
+#'                                 x.vars = ".",
+#'                                 weights.var = "WTMEC2YR",
+#'                                 key.var = "observationID",
+#'                                 data = nhanes)
+#'
+#' @keywords models
+#' @export
 make.fastDR.formula <-
    function(y.vars,
             t.var,
@@ -45,6 +102,38 @@ make.fastDR.formula <-
       key.form    =formula(paste("~",key.var,sep=""))))
 }
 
+#' Print a fastDR object
+#'
+#' Display basic information about a `fastDR` object.
+#'
+#' @param x An object of class `fastDR`.
+#' @param type A string taking value `"outcome"` or `"complete"`.
+#' @param model A string taking value `"un"`, `"ps"`, or `"dr"`.
+#' @param ... Arguments passed to `print.default`.
+#'
+#' @details
+#' If `type = "outcome"` then `print.fastDR()` will output the treatment effect
+#' estimate. Which treatment effect estimate depends on the value of `model`.
+#' Presumably, `"dr"` will be needed, but an unadjusted and propensity score
+#' weighted option are available. Results are reported on the response scale,
+#' not as odds ratios or rate ratios. `print.fastDR()` will produce percentage
+#' point differences for binomial outcomes, rate differences for Poisson
+#' outcomes, and differences for all others.
+#'
+#' If `type = "complete"` then `print.fastDR()` will print the entire effects
+#' results.
+#'
+#' See [fastDR()] for an example of its use.
+#'
+#' @return `print.fastDR()` is called for its side effect of printing a summary
+#'   of treatment effect estimates. It returns `NULL` invisibly.
+#'
+#' @author Greg Ridgeway \email{gridge@upenn.edu}
+#' @seealso [fastDR()]
+#'
+#' @keywords models
+#' @method print fastDR
+#' @export
 print.fastDR <- function(x, type="outcome", model="dr",... )
 {
    if(!inherits(x, "fastDR"))
@@ -99,6 +188,33 @@ print.fastDR <- function(x, type="outcome", model="dr",... )
    }
 }
 
+#' Summarize a fastDR object
+#'
+#' Display treatment effect estimates and balance diagnostics for a `fastDR`
+#' object.
+#'
+#' @param object An object of class `fastDR`.
+#' @param ... Additional arguments. Currently ignored.
+#'
+#' @details
+#' `summary.fastDR()` prints the estimated treatment effects and the balance
+#' table stored on the fitted object. If the object was created with
+#' `ps.only = TRUE`, treatment effects are not available and the method reports
+#' that no treatment effects were estimated.
+#'
+#' The balance table compares control and treatment distributions for the
+#' covariates used in the propensity score model. See [fastDR()] for details on
+#' the returned object components.
+#'
+#' @return `summary.fastDR()` is called for its side effect of printing model
+#'   results and balance diagnostics. It returns `NULL` invisibly.
+#'
+#' @author Greg Ridgeway \email{gridge@upenn.edu}
+#' @seealso [fastDR()], [print.fastDR()]
+#'
+#' @keywords models
+#' @method summary fastDR
+#' @export
 summary.fastDR <- function(object, ... )
 {
    if(!inherits(object, "fastDR"))
@@ -126,6 +242,41 @@ summary.fastDR <- function(object, ... )
    }
 }
 
+#' Weighted Kolmogorov-Smirnov Statistic
+#'
+#' Computes a weighted Kolmogorov-Smirnov statistic to measure the difference in
+#' the marginal feature distributions between the treatment and control cases.
+#'
+#' @param x A vector of numeric measurements.
+#' @param z A vector of 0/1 indicators indicating group membership.
+#' @param w A vector of weights.
+#'
+#' @details
+#' This function is used in the propensity score model building step to assess
+#' the balance between the treatment and control cases.
+#'
+#' @return The Kolmogorov-Smirnov statistic, the largest difference between
+#'   treatment and control groups' empirical cumulative distribution functions.
+#'
+#' @references
+#' A. Kolmogorov (1933). "Sulla determinazione empirica di una legge di
+#' distribuzione," \emph{Giornale dell'Istituto Italiano degli Attuari}
+#' 4:83-91.
+#'
+#' N. Smirnov (1948). "Table for estimating the goodness of fit of empirical
+#' distributions," \emph{Annals of Mathematical Statistics} 19(2):279-281.
+#'
+#' @author Greg Ridgeway \email{gridge@upenn.edu}
+#' @seealso [fastDR()]
+#'
+#' @examples
+#' y     <- c(rnorm(100, 0, 1), rnorm(100, 0.5, 1))
+#' treat <- rep(0:1, each = 100)
+#' w     <- 1 / c(pnorm(y[1:100], 0, 1), pnorm(y[101:200], 0.5, 1))
+#' ks(x = y, z = treat, w = w)
+#'
+#' @keywords univar
+#' @export
 ks <- function(x,z,w)
 {
     w[z==1] <-  w[z==1]/sum(w[z==1])
@@ -159,6 +310,208 @@ ks <- function(x,z,w)
    sum(rowSums((X0 %*% vcov(glm1)) * X1) * dmu0 * dmu1)
 }
 
+#' Fast Doubly Robust Estimation
+#'
+#' Doubly robust treatment effect estimation with non-parametric propensity
+#' score estimates.
+#'
+#' @param form.list A list of formulas giving the components of the model,
+#'   outcomes, treatment indicator, covariates, observation weights, and
+#'   observation keys. Consider using [make.fastDR.formula()] to assist in
+#'   creating `form.list`.
+#' @param data A data frame containing the variables in the model.
+#' @param y.dist The distribution assumed for the outcome. These should be
+#'   specified as character strings, for example `"gaussian"`,
+#'   `"quasibinomial"`, or `"quasipoisson"`. Using `"binomial"` will cause
+#'   inconsequential warning messages since the model uses non-integer
+#'   propensity score weights. `"quasibinomial"` avoids this. If `y.form` has
+#'   multiple outcomes then `y.dist` should be a vector of strings the same
+#'   length as the number of outcomes in `y.dist`.
+#' @param estimand Either `"ATT"` (default) for the average treatment effect on
+#'   the treated or `"ATE"` for the average treatment effect.
+#' @param n.trees The total number of trees to fit for the generalized boosted
+#'   model. This is equivalent to the number of iterations and the number of
+#'   basis functions in the additive expansion. The default is most likely
+#'   appropriate.
+#' @param interaction.depth The maximum depth of variable interactions. 1
+#'   implies an additive model, 2 implies a model with up to 2-way interactions,
+#'   etc.
+#' @param shrinkage A shrinkage parameter applied to each tree in the
+#'   generalized boosted model expansion. Also known as the learning rate or
+#'   step-size reduction. The default is most likely appropriate.
+#' @param verbose If `TRUE`, `fastDR()` will print out progress and performance
+#'   indicators.
+#' @param ps.only If `TRUE`, `fastDR()` will skip the DR step and just return
+#'   the propensity scores. This is useful if you need to do non-standard
+#'   changes to the regression model, like eliminating some covariates.
+#' @param keepGLM If `TRUE`, keep a copy of the `glm` objects produced in the
+#'   outcome model step. These models can become large with multiple outcomes
+#'   and large datasets.
+#' @param smooth.lm A numeric value for penalizing the size of the covariates in
+#'   the DR step.
+#' @param par_details A list containing the number of threads and
+#'   `array_chunk_size` to be passed to `gbmt` for running several gbm
+#'   computations in parallel, for example gradient calculation and split
+#'   selection. Most easily set using `gbmParallel`.
+#'
+#' @details
+#' The `form.list` has the following components.
+#'
+#' `y.form` is a formula specifying the outcomes, for example `~y`. Multiple
+#' outcomes may be listed, for example `~y1 + y2`; `fastDR()` will conduct a
+#' separate analysis for each of them.
+#'
+#' `t.form` is a formula specifying the treatment indicator, for example
+#' `~treat`. The formula can include only one binary treatment coded as 0/1.
+#'
+#' `x.form` is a formula specifying the potential confounding variables that
+#' will be included in the propensity score model and in the outcome model, for
+#' example `~X1 + X2 + X2`.
+#'
+#' `weights.form` is an optional formula specifying observation weights, such as
+#' sampling weights. Sampling weights cannot be missing, negative, or equal to
+#' zero.
+#'
+#' `key.form` is a formula giving observation IDs, for example `~caseID`. This
+#' is required in order to make sure that after returning results, the propensity
+#' score weights can be correctly aligned with cases by the user.
+#'
+#' `fastDR()` estimates either the average treatment effect on the treated (ATT)
+#' or the average treatment effect (ATE).
+#'
+#' `fastDR()` uses a generalized boosted model to estimate a propensity score
+#' model (McCaffrey, Ridgeway, and Morral, 2004). It uses those propensity
+#' scores as weights in a weighted generalized linear model to produce a doubly
+#' robust estimate of the treatment effect.
+#'
+#' To reuse the propensity score weights in other analyses, make sure that the
+#' code aligns the right weight with the right case. Use the key in the data and
+#' the key attached to the weights. For example,
+#' `mydata$psw <- myfastDR$w[match(mydata$observationID, names(myfastDR$w))]`.
+#'
+#' For ATT, treated cases receive weight equal to 1 and comparison cases receive
+#' weight p/(1-p). Control cases with factor levels that do not appear among
+#' treated cases are dropped from the analysis. For ATE, treated cases receive
+#' weight equal to 1/p and comparison cases receive weight 1/(1-p). Cases in
+#' either group with factor levels that do not appear in the opposite group are
+#' dropped from the analysis, and `fastDR()` issues a warning when this occurs.
+#'
+#' The effective sample size is the number of independent cases that would yield
+#' the same precision as the given weighted sample. It is computed as
+#' \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
+#'
+#' When `smooth.lm` is greater than 0, `fastDR()` uses a data augmentation method
+#' to impose a penalty on the regression coefficients in the DR step. At a
+#' minimum, modest penalties provide numerical stability in the event of
+#' correlation among the covariates or certain features being highly predictive
+#' of the outcome. `fastDR()` does not penalize the intercept or the treatment
+#' indicator. `fastDR()` uses the data augmentation approach described in
+#' Greenland and Mansournia (2015). This approach uses ridge regression
+#' penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic
+#' regression, and gamma(m,m) prior for Poisson regression. The appropriate size
+#' of the penalty is subjective, but values between 0.1 and 4.0 are modest
+#' penalties for general application.
+#'
+#' For the DR estimates, `fastDR()` computes exact standard errors when the
+#' prediction data used for counterfactual means has at most 5000 rows. This
+#' corresponds to at most 2500 treated cases for ATT and at most 2500 analysis
+#' cases for ATE. For larger analyses, `fastDR()` takes a random sample of 2500
+#' cases for computing the standard errors of the estimates of E(Y0), E(Y1), and
+#' E(Y1-Y0). Computing these standard errors requires summarizing a large
+#' covariance matrix of predicted values, which can require a lot of memory, but
+#' can be efficiently estimated with a sample. Note that there will be some
+#' amount of sampling variability; in simulations, the Monte Carlo standard
+#' errors are typically off by at most 0.1%.
+#'
+#' @return `fastDR()` returns a `fastDR` object, a list containing:
+#' \item{ks}{The largest KS statistic in the balance table. See `balance.tab`
+#'   below. A measure of the quality of the propensity score fit.}
+#' \item{ks.un}{The largest KS statistic in the balance table before propensity
+#'   score weighting. See `balance.tab.un` below.}
+#' \item{balance.tab}{The balance table showing the treatment means and
+#'   propensity score weighted control means for each of the terms specified in
+#'   `x.form`. For categorical features the table lists each level separately.}
+#' \item{balance.tab.un}{The balance table showing the treatment means and
+#'   unweighted control means for each of the terms specified in `x.form`.}
+#' \item{w}{The propensity score weights used in the analysis. Use `names()` to
+#'   extract the key associated with each weight to align with the original
+#'   data. All cases in the original data might not necessarily have a
+#'   propensity score weight if they were dropped because factor levels were
+#'   outside common support. Missing, negative, or zero sampling weights cause
+#'   `fastDR()` to stop.}
+#' \item{p}{The estimated propensity scores. `p` also maintains the `key` in its
+#'   names.}
+#' \item{n1, ESS}{The number of cases in the treatment group and the effective
+#'   sample size of the control group.}
+#' \item{glm.un, glm.ps, glm.dr}{The generalized linear model fits using only
+#'   sampling weights (`glm.un`), using propensity score weights (`glm.ps`), and
+#'   the model producing doubly robust estimates (`glm.dr`).}
+#' \item{effects}{A table showing the results. `effects` includes results for an
+#'   unadjusted (`un`), propensity score adjusted (`ps`), and doubly robust
+#'   estimate (`dr`). For each, `effects` includes the estimates and standard
+#'   errors for E(Y1|t=1), E(Y0|t=1), their difference, and p-value. These
+#'   results are all on the scale of the response, not odds ratios or rate
+#'   ratios.}
+#' \item{y.dist}{Contains the value of `y.dist` used in the call to `fastDR()`.}
+#' \item{shrinkage}{The shrinkage parameter used in the propensity score model.}
+#'
+#' @references
+#' D. McCaffrey, G. Ridgeway, and A. Morral (2004). "Propensity score
+#' estimation with boosted regression for evaluating adolescent substance abuse
+#' treatment," \emph{Psychological Methods} 9(4):403-425.
+#'
+#' J.H. Friedman (2001). "Greedy Function Approximation: A Gradient Boosting
+#' Machine," \emph{Annals of Statistics} 29(5):1189-1232.
+#'
+#' S. Greenland and M.A. Mansournia (2015). "Penalization, bias reduction, and
+#' default priors in logistic and related categorical and survival regressions,"
+#' \emph{Statistics in Medicine} 34:3133-3143.
+#'
+#' S. Greenland, M.A. Mansournia, and D.G. Altman (2014). "Sparse data bias: a
+#' problem hiding in plain sight," \emph{The BMJ} 353:i1981.
+#'
+#' \url{https://gregridgeway.github.io/}
+#'
+#' @author Greg Ridgeway \email{gridge@upenn.edu}
+#' @seealso [gbm3::gbmt()], [gbm3::gbmParallel()]
+#'
+#' @examples
+#' # NHANES example from survey package
+#'
+#' data(nhanes)
+#' nhanes <- nhanes[seq_len(300), ]
+#' # add a unique ID to each row
+#' nhanes$observationID <- 1:nrow(nhanes)
+#' # recode the "treatment" (male) to a 0/1 indicator
+#' nhanes$male <- as.numeric(nhanes$RIAGENDR == 1)
+#' # make "race" a factor with descriptive labels
+#' nhanes$race <- factor(nhanes$race,
+#'                       levels = c(1, 2, 3, 4),
+#'                       labels = c("Hispanic", "non-Hispanic white",
+#'                                  "non-Hispanic black", "other"))
+#'
+#' dr1 <- fastDR(list(y.form = ~HI_CHOL,          # high cholesterol (over 240mg/dl)
+#'                    t.form = ~male,             # compare males to similar females
+#'                    x.form = ~race + agecat,    # potential confounders
+#'                    weights.form = ~WTMEC2YR,   # sampling weights
+#'                    key.form = ~observationID),
+#'               data = nhanes,
+#'               y.dist = "quasibinomial",   # outcome is 0/1
+#'               n.trees = 14,
+#'               interaction.depth = 1,
+#'               shrinkage = 0.01,
+#'               verbose = FALSE,
+#'               smooth.lm = 0.1,            # stabilize regression coefs
+#'               par_details = gbmParallel(1, 1024)) # just use one core
+#'
+#' # show balance table
+#' round(dr1$balance.tab, 3)
+#'
+#' # compute percentage difference
+#' print(dr1, type = "outcome", model = "dr")
+#'
+#' @keywords models
+#' @export
 fastDR <- function(form.list,
                    data,
                    y.dist="gaussian",
