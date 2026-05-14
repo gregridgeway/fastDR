@@ -31,7 +31,7 @@ avoids this. If \code{y.form} has multiple outcomes than \code{y.dist} should
 be a vector of strings the same length as the number of outcomes in
 \code{y.dist}}
 
-\item{estimand}{either "ATT" (default) for the average treatment effect or
+\item{estimand}{either "ATT" (default) for the average treatment effect on the treated or
 "ATE" for the average treatment effect}
 
 \item{n.trees}{the total number of trees to fit for the generalized boosted
@@ -73,25 +73,25 @@ formula can include only one binary treatment coded as 0/1
 will be included in the propensity score model and in the outcome model (e.g.
 \code{~X1+X2+X2})
 
-\code{weights.form} is an optional formula specifying observation weights, such as sampling weights
+\code{weights.form} is an optional formula specifying observation weights, such as sampling weights. Sampling weights cannot be missing, negative, or equal to zero.
 
 \code{key.form} is a formula giving observation IDs (e.g. \code{~caseID}). This is required in order to make sure that after returning results, the propensity
 score weights can be correctly aligned with cases by the user
 
-\code{fastDR} only estimates the average treatment effect on the treated.
+\code{fastDR} estimates either the average treatment effect on the treated (ATT) or the average treatment effect (ATE).
 
 \code{fastDR} uses a generalized boosted model to estimate a propensity score model (McCaffrey, Ridgeway, and Morral, 2004). It uses those propensity scores as weights in a weighted generalized linear model to produce a doubly robust estimate of the treatment effect.
 
 To reuse the propensity score weights in other analyses, make sure that the code aligns the right weight with the right case. Use the key in the data and the key attached to the weights. For example, \code{mydata$psw <- myfastDR$w[match(mydata$observationID,names(myfastDR$w))]}
 
-For ATT, treated cases receive weight equal to 1 and comparison cases receive weight p/(1-p). For ATE, treated cases receive weight equal to 1/p and comparison cases receive weight 1/(1-p).
+For ATT, treated cases receive weight equal to 1 and comparison cases receive weight p/(1-p). Control cases with factor levels that do not appear among treated cases are dropped from the analysis. For ATE, treated cases receive weight equal to 1/p and comparison cases receive weight 1/(1-p). Cases in either group with factor levels that do not appear in the opposite group are dropped from the analysis, and \code{fastDR} issues a warning when this occurs.
 
 The effective sample size is the number of independent cases that would yield the same precision as the given weighted sample. It is computed as
 \deqn{\frac{(\sum_i (1-t_i)w_i)^2}{\sum_i (1-t_i)w_i^2}}
 
 When \code{smooth.lm} is greater than 0, \code{fastDR} uses a data augmentation method to impose a penalty on the regression coefficients in the DR step. At a minimum, modest penalties provide numerical stability in the event of correlation among the covariates or certain features being highly predictive of the outcome. \code{fastDR} does not penalize the intercept or the treatment indicator. \code{fastDR} uses the data augmentation approach described in Greenland and Mansournia (2015). This approach uses ridge regression penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic regression, and gamma(m,m) prior for Poisson regression. The appropriate size of the penalty is subjective, but values between 0.1 and 4.0 are modest penalties for general application.
 
-If the number of treatment cases exceeds 1500, then \code{fastDR} will take a random sample of 1500 cases for computing the standard errors of the estimates of E(Y1|t=1) and E(Y1-Y0|t=1). Computing the standard error requires computing the mean of the n1*n1 covariance matrix of predicted values, which can require a lot of memory when n1 is large, but can be efficiently estimated with a sample. Note that there will be some amount of sampling variability.
+For the DR estimates, \code{fastDR} computes exact standard errors when the prediction data used for counterfactual means has at most 5000 rows. This corresponds to at most 2500 treated cases for ATT and at most 2500 analysis cases for ATE. For larger analyses, \code{fastDR} takes a random sample of 2500 cases for computing the standard errors of the estimates of E(Y0), E(Y1), and E(Y1-Y0). Computing these standard errors requires summarizing a large covariance matrix of predicted values, which can require a lot of memory, but can be efficiently estimated with a sample. Note that there will be some amount of sampling variability; in simulations, the Monte Carlo standard errors are typically off by at most 0.1%.
 
 }
 
@@ -101,7 +101,7 @@ If the number of treatment cases exceeds 1500, then \code{fastDR} will take a ra
 \item{ks.un}{the largest KS statistic in the balance table before propensity score weighting (see \code{balance.tab.un} below)}
 \item{balance.tab}{the balance table showing the treatment means and propensity score weighted control means for each of the terms specified in \code{x.form}. For categorical features the table lists each level separately}
 \item{balance.tab.un}{the balance table showing the treatment means and unweighted control means for each of the terms specified in \code{x.form}}
-\item{w}{the propensity score weights used in the analysis. Use \code{names()} to extract the key associated with each weight to align with the original data. All cases in the original data might not necessarily have a propensity score weight (e.g. missing value for sampling weight)}
+\item{w}{the propensity score weights used in the analysis. Use \code{names()} to extract the key associated with each weight to align with the original data. All cases in the original data might not necessarily have a propensity score weight if they were dropped because factor levels were outside common support. Missing, negative, or zero sampling weights cause \code{fastDR} to stop.}
 \item{p}{the estimated propensity scores. \code{p} also maintains the \code{key} in its names}
 \item{n1,ESS}{the number of cases in the treatment group and the effective sample size of the control group}
 \item{glm.un,glm.ps,glm.dr}{the generalized linear model fits using only sampling weights (\code{glm.un}), using propensity score weights (\code{glm.ps}), and the model producing doubly robust estimates (\code{glm.dr})}
