@@ -1,6 +1,6 @@
 Package: fastDR
 Version: 1.1-0
-Date: 2026-05-11
+Date: 2026-05-14
 Title: Fast Doubly Robust Estimation
 Authors@R: person(given = "Greg",
                   family = "Ridgeway",
@@ -8,6 +8,8 @@ Authors@R: person(given = "Greg",
                   email = "gridge@upenn.edu")
 Depends: R (>= 4.0.0), gbm3, survey (>= 4.1)
 Imports: methods
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
 Description: Uses generalized boosted models to compute
    non-parametric propensity score estimates and a propensity score
    weighted outcome regression model to compute doubly robust estimates
