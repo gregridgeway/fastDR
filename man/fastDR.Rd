@@ -160,10 +160,10 @@ correlation among the covariates or certain features being highly predictive
 of the outcome. \code{fastDR()} does not penalize the intercept or the treatment
 indicator. \code{fastDR()} uses the data augmentation approach described in
 Greenland and Mansournia (2015). This approach uses ridge regression
-penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic
-regression, and gamma(m,m) prior for Poisson regression. The appropriate size
-of the penalty is subjective, but values between 0.1 and 4.0 are modest
-penalties for general application.
+penalties with precision \code{m} for Gaussian outcomes, log-F(m,m) priors for
+logistic regression, and log-gamma(m,m) priors for Poisson regression. The
+appropriate size of the penalty is subjective, but values between 0.1 and
+4.0 are modest penalties for general application.
 
 For the DR estimates, \code{fastDR()} computes exact standard errors when the
 prediction data used for counterfactual means has at most 5000 rows. This

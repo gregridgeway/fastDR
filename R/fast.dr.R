@@ -102,6 +102,44 @@ make.fastDR.formula <-
       key.form    =formula(paste("~",key.var,sep=""))))
 }
 
+.add.smooth.lm.prior.rows <- function(data.mx, y.family, smooth.lm)
+{
+   if(smooth.lm <= 0)
+   {
+      return(data.mx)
+   }
+
+   n.penalized <- ncol(data.mx) - 4
+   if(n.penalized <= 0)
+   {
+      return(data.mx)
+   }
+
+   # first four columns: Intercept, w, y, t
+   a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = n.penalized))
+
+   if(y.family == "quasibinomial")
+   {
+      # A log-F(m,m) prior adds m/2 prior failures and m/2 prior successes.
+      a[,2] <- smooth.lm/2
+      data.mx <- rbind(data.mx, a)
+      a[,3] <- 1
+      data.mx <- rbind(data.mx, a)
+   }
+   else if(y.family == "quasipoisson")
+   {
+      # A log-gamma(m,m) prior for exp(beta) is centered at beta = 0.
+      a[,3] <- 1
+      data.mx <- rbind(data.mx, a)
+   }
+   else
+   {
+      data.mx <- rbind(data.mx, a)
+   }
+
+   data.mx
+}
+
 #' Print a fastDR object
 #'
 #' Display basic information about a `fastDR` object.
@@ -407,10 +445,10 @@ ks <- function(x,z,w)
 #' of the outcome. `fastDR()` does not penalize the intercept or the treatment
 #' indicator. `fastDR()` uses the data augmentation approach described in
 #' Greenland and Mansournia (2015). This approach uses ridge regression
-#' penalties (N(0,m)) for Gaussian outcomes, log-F(m,m) prior for logistic
-#' regression, and gamma(m,m) prior for Poisson regression. The appropriate size
-#' of the penalty is subjective, but values between 0.1 and 4.0 are modest
-#' penalties for general application.
+#' penalties with precision `m` for Gaussian outcomes, log-F(m,m) priors for
+#' logistic regression, and log-gamma(m,m) priors for Poisson regression. The
+#' appropriate size of the penalty is subjective, but values between 0.1 and
+#' 4.0 are modest penalties for general application.
 #'
 #' For the DR estimates, `fastDR()` computes exact standard errors when the
 #' prediction data used for counterfactual means has at most 5000 rows. This
@@ -1004,16 +1042,9 @@ fastDR <- function(form.list,
       
       # S. Greenland, M.A. Mansournia, D.G. Altman (2016). "Sparse data bias: a 
       # problem hiding in plain sight," BMJ 352:i1981 10.1136/bmj.i1981.
-      if(smooth.lm>0)
-      {
-         a <- cbind(0, smooth.lm, 0, 0, diag(1, nrow = ncol(data.mx)-4))
-         data.mx <- rbind(data.mx, a)
-         if(y.dist[[i.y]]=="quasibinomial") # for log-F distribution need two rows
-         {
-            a[,3] <- 1 # set outcome to 1
-            data.mx <- rbind(data.mx, a)
-         }
-      }
+      data.mx <- .add.smooth.lm.prior.rows(data.mx,
+                                           y.family = y.dist[[i.y]],
+                                           smooth.lm = smooth.lm)
       
       data.mx <- data.frame(data.mx, row.names = 1:nrow(data.mx))
       sdesign.wexp <- svydesign(ids=~1, weights=~w, data=data.mx)
