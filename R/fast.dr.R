@@ -136,6 +136,29 @@ ks <- function(x,z,w)
     return(ifelse(length(cumv) > 0, max(cumv), 0))
 }
 
+.fastDR_paired_prediction_cov_sum <- function(glm1, data, t.var)
+{
+   data0 <- data
+   data1 <- data
+   data0[, t.var] <- 0
+   data1[, t.var] <- 1
+   X0 <- model.matrix(delete.response(terms(glm1)),
+                      data=data0,
+                      contrasts.arg=glm1$contrasts,
+                      xlev=glm1$xlevels)
+   X1 <- model.matrix(delete.response(terms(glm1)),
+                      data=data1,
+                      contrasts.arg=glm1$contrasts,
+                      xlev=glm1$xlevels)
+   X0 <- X0[, names(coef(glm1)), drop=FALSE]
+   X1 <- X1[, names(coef(glm1)), drop=FALSE]
+   eta0 <- as.numeric(X0 %*% coef(glm1))
+   eta1 <- as.numeric(X1 %*% coef(glm1))
+   dmu0 <- glm1$family$mu.eta(eta0)
+   dmu1 <- glm1$family$mu.eta(eta1)
+   sum(rowSums((X0 %*% vcov(glm1)) * X1) * dmu0 * dmu1)
+}
+
 fastDR <- function(form.list,
                    data,
                    y.dist="gaussian",
@@ -239,7 +262,7 @@ fastDR <- function(form.list,
    # extract observation key (case ID)
    if(is(key.form)[1]=="formula")
    {
-      key <- model.frame(key.form,data)[,1]
+      key <- model.frame(key.form,data, na.action=na.pass)[,1]
    }
    if(any(is.na(key)))
       stop("missing values in key. key cannot have missing values")
@@ -274,12 +297,14 @@ fastDR <- function(form.list,
       if(is(weights.form)[1]!="formula")
          stop("weights parameter should be a formula of the form ~weight, where 'weight' is the variable in data containing the observation weights")
       warning("SEs for DR estimates with sample weighted data might not completely account for sampling weights")
-      data0$samp.w <- model.frame(weights.form,data)[,1]
+      data0$samp.w <- model.frame(weights.form,data, na.action=na.pass)[,1]
    }
    if(any(is.na(data0$samp.w)))
       stop("missing values in weights. weights cannot have missing values")
    if(any(data0$samp.w<0))
       stop("Some observation weights are negative")
+   if(any(data0$samp.w==0))
+      stop("Some observation weights are 0. Drop cases with sampling weights equal to 0 before calling fastDR")
 
    # create missing indicators, median impute numeric features
    for(xj in match.vars)
@@ -328,13 +353,30 @@ fastDR <- function(form.list,
    ps.form <- formula(paste(as.character(t.form[[2]]),"~",
                             as.character(x.form[2])))
 
-   # drop control cases with factor levels that treatment cases do not have
-   #   saves computation time if eliminate control cases with prop score=0
+   # drop cases with factor levels outside common support
    k <- rep(TRUE,nrow(data0))
    for(xj in match.vars[sapply(data0[1,match.vars],is.factor)])
    {
-      a <- subset(data0, eval(subsetExpr1))[[xj]]
-      k <- k & (is.na(data0[,xj]) | (data0[,xj] %in% a))
+      treat.levels <- unique(subset(data0, eval(subsetExpr1))[[xj]])
+      cntrl.levels <- unique(subset(data0, eval(subsetExpr0))[[xj]])
+      k.cntrl <- is.na(data0[,xj]) | (data0[,xj] %in% treat.levels)
+      k.treat <- is.na(data0[,xj]) | (data0[,xj] %in% cntrl.levels)
+      if(estimand=="ATE")
+      {
+         dropped.cntrl <- sum(k & with(data0, eval(subsetExpr0)) & !k.cntrl)
+         dropped.treat <- sum(k & with(data0, eval(subsetExpr1)) & !k.treat)
+         if((dropped.cntrl+dropped.treat)>0)
+         {
+            warning("For ATE, dropping ", dropped.cntrl,
+                    " control and ", dropped.treat,
+                    " treatment cases with factor levels in ", xj,
+                    " that do not appear in the opposite group")
+         }
+         k <- k & k.cntrl & k.treat
+      } else
+      {
+         k <- k & k.cntrl
+      }
    }
 
    data0   <- data0[k,]
@@ -666,18 +708,16 @@ fastDR <- function(form.list,
       # only real cases, not those for shrinking beta
       if(estimand=="ATT")
       {
-         a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
-         n <- nrow(a)
-         a <- rbind(a,a)
-         a[1:n, as.character(t.form[2])] <- 0 # recode treated cases as control
+         pred.data <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
       } else # estimand=="ATE"
       {
-         a <- subset(data.mx, Intercept==1)
-         n <- nrow(a)
-         a <- rbind(a,a)
-         a[1:n, as.character(t.form[2])] <- 0 # recode all cases as control
-         a[(n+1):(2*n), as.character(t.form[2])] <- 1 # recode all cases as treated
+         pred.data <- subset(data.mx, Intercept==1)
       }
+      n <- nrow(pred.data)
+      t.var <- as.character(t.form[2])
+      a <- rbind(pred.data,pred.data)
+      a[1:n, t.var] <- 0 # recode cases as control
+      a[(n+1):(2*n), t.var] <- 1 # recode cases as treated
       y.hat0 <- predict(glm1,
                         newdata=a,
                         type="response")
@@ -707,25 +747,19 @@ fastDR <- function(form.list,
          se.TE <- sqrt(diag(t(u) %*% vcov(y.hat0) %*% u))
       } else
       {
-         VdiagE0 <- sum(vcov(y.hat0)[1:n]) # vcov will return a vector here
-         VdiagE1 <- sum(vcov(y.hat0)[(n+1):(2*n)])
-         VdiagTE <- sum(vcov(y.hat0))
+         n0 <- 2500
+         Vdiag <- as.numeric(vcov(y.hat0)) # vcov will return a vector here
+         VdiagE0 <- sum(Vdiag[1:n])
+         VdiagE1 <- sum(Vdiag[(n+1):(2*n)])
+         VdiagY0Y1 <- .fastDR_paired_prediction_cov_sum(glm1,
+                                                        pred.data,
+                                                        t.var)
+         VdiagTE <- VdiagE0 + VdiagE1 - 2*VdiagY0Y1
          
-         n0 <- 1500
-         if(estimand=="ATT")
-         {
-            a <- subset(data.mx, Intercept==1 & eval(subsetExpr1))
-            a <- a[sample(1:nrow(a), size=n0),]
-            a <- rbind(a,a)
-            a[1:n0, as.character(t.form[2])] <- 0 # recode treated cases as control
-         } else # estimand=="ATE"
-         {
-            a <- subset(data.mx, Intercept==1)
-            a <- a[sample(1:nrow(a), size=n0),]
-            a[, as.character(t.form[2])] <- 1 # recode all cases as treated
-            a <- rbind(a,a)
-            a[1:n0, as.character(t.form[2])] <- 0 # recode all cases as control
-         }
+         a <- pred.data[sample(1:n, size=n0),]
+         a <- rbind(a,a)
+         a[1:n0, t.var] <- 0 # recode sampled cases as control
+         a[(n0+1):(2*n0), t.var] <- 1 # recode sampled cases as treated
          y.hat0 <- predict(glm1, 
                            newdata=a, 
                            type="response", 
@@ -743,14 +777,11 @@ fastDR <- function(form.list,
          VEY1 <- VdiagE1 + VoffdiagE1
          
          # se(EY1-EY0)
-         # for the difference variance is
-         #   mean(V[1:n,1:n])-2*mean(V[1:n,-(1:n)])+mean(V[-(1:n),-(1:n)])
          V <- vcov(y.hat0)
-         VTE <- VdiagTE + n*(n-1)*
-            (sum(V[  1:n0,   1:n0]) +
-                sum(V[-(1:n0),-(1:n0)]) -
-                sum(diag(V)) -
-                2*sum(V[1:n0,-(1:n0)])) / (n0*(n0-1))
+         Vcross <- V[1:n0, (n0+1):(2*n0), drop=FALSE]
+         VoffdiagY0Y1 <- sum(Vcross) - sum(diag(Vcross))
+         VoffdiagY0Y1 <- n*(n-1)*VoffdiagY0Y1/(n0*(n0-1))
+         VTE <- VdiagTE + VoffdiagE0 + VoffdiagE1 - 2*VoffdiagY0Y1
          se.TE <- sqrt(c(VEY0, VEY1, VTE))/n
       }
       results$effects[[i.y]]$se.y0[3] <- se.TE[1]
