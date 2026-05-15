@@ -12,6 +12,8 @@ name: R-hub
 run-name: "${{ github.event.inputs.id }}: ${{ github.event.inputs.name || format('Manually run by {0}', github.triggering_actor) }}"
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       config:
@@ -36,7 +38,7 @@ jobs:
       - uses: r-hub/actions/setup@v1
         id: rhub-setup
         with:
-          config: ${{ github.event.inputs.config }}
+          config: ${{ github.event.inputs.config || 'linux,windows,macos' }}
 
   linux-containers:
     needs: setup
